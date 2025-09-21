@@ -5,3 +5,7 @@ credentials.json
 token.json
 
 .mail_venv
+
+# Database files
+gmail_agent.db
+*.db

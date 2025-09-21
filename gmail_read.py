@@ -4,7 +4,7 @@ Reads your Gmail using a WEB OAuth client.
 This script:
   - Uses a fixed redirect URI (http://localhost:8080/) so it matches your Web client settings.
   - Runs a local web server to catch Google's OAuth redirect.
-  - Stores tokens in token.json (so you only sign in once).
+  - Stores tokens in the database (so you only sign in once).
   - Lists recent message IDs, fetches headers, and reads the plain-text body.
 
 IMPORTANT:
@@ -17,6 +17,7 @@ from __future__ import annotations
 # Standard library imports
 import os  # interacting with the operating system (paths, checking files, environment variables)
 import base64  # encoding/decoding (Gmail message bodies are base64-url encoded)
+from datetime import datetime  # for parsing email dates
 from typing import Dict, List, Optional  # type hints used throughout the module
 
 # Google authentication and API client imports
@@ -25,6 +26,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow  # handles the OAuth2 flo
 from google.auth.transport.requests import Request  # helper for making HTTP requests to refresh tokens
 from googleapiclient.discovery import build  # constructs API client objects (Gmail API client)
 
+# Local database imports
+from database import DatabaseManager, User  # database models and utilities
+
 # Ask only for read permission (least privilege).
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"] # Ensure gmail.readonly scope is selected in the OAuth client
 
@@ -32,23 +36,30 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"] # Ensure gmail.reado
 OAUTH_HOST = "localhost"
 OAUTH_PORT = 8080  # ensure http://localhost:8080/ is registered in the OAuth client
 
-def get_service():
+# Database setup
+db_manager = DatabaseManager()
+
+# Hardcoded user for demo (replace with actual user management)
+DEMO_USER_EMAIL = "demo@example.com"
+
+def get_service(user_id: int):
     """
-    Create an authorized Gmail API client.
-    - Reuses token.json if present (auto-refreshes access token with the refresh token).
-    - If no token or invalid, runs a local server on http://localhost:8080/ to complete OAuth.
+    Create an authorized Gmail API client using database-stored credentials.
+    - Reuses stored credentials from database if present (auto-refreshes access token).
+    - If no token or invalid, runs OAuth flow and saves to database.
     """
     creds: Optional[Credentials] = None
 
-    # 1) Load previously saved user credentials (if any).
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    # 1) Load previously saved user credentials from database.
+    creds = db_manager.get_user_credentials(user_id)
 
     # 2) If no valid creds, do the OAuth dance.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             # Refresh silently using the refresh token.
             creds.refresh(Request())
+            # Save refreshed credentials back to database
+            db_manager.save_user_token(user_id, creds)
         else:
             # Start the Installed App flow, but bind to a fixed localhost port.
             # This is compatible with WEB clients as long as the redirect URI matches.
@@ -64,9 +75,8 @@ def get_service():
                 open_browser=True,
             )
 
-        # 3) Save credentials for next time.
-        with open("token.json", "w") as f:
-            f.write(creds.to_json())
+            # 3) Save credentials to database instead of file.
+            db_manager.save_user_token(user_id, creds)
 
     # 4) Build the Gmail client with authorized credentials.
     return build("gmail", "v1", credentials=creds)
@@ -82,23 +92,30 @@ def list_message_ids(service, query: str = "", label_ids: Optional[List[str]] = 
     label_ids = label_ids or []
     ids: List[str] = []
     page_token = None
+    fetched = 0
 
-    # Page through results until no nextPageToken remains.
-    while True:
+    # Page through results until no nextPageToken remains or max_results reached.
+    while fetched < max_results:
+        remaining = max_results - fetched
+        page_size = min(remaining, 100)  # Gmail API max per request
+        
         resp = service.users().messages().list(
             userId="me",
             q=query,
             labelIds=label_ids,
-            maxResults=max_results,
+            maxResults=page_size,
             pageToken=page_token,
         ).execute()
 
-        ids.extend([m["id"] for m in resp.get("messages", [])])
+        messages = resp.get("messages", [])
+        ids.extend([m["id"] for m in messages])
+        fetched += len(messages)
+        
         page_token = resp.get("nextPageToken")
-        if not page_token:
+        if not page_token or len(messages) == 0:
             break
 
-    return ids
+    return ids[:max_results]  # Ensure we don't exceed max_results
 
 def get_message_metadata(service, msg_id: str, headers: Optional[List[str]] = None) -> Dict[str, str]:
     """
@@ -160,30 +177,95 @@ def get_message_body(service, msg_id: str, prefer_html: bool = False) -> str:
     decoded_bytes = base64.urlsafe_b64decode(data.encode("utf-8"))
     return decoded_bytes.decode(errors="replace")
 
+def parse_email_date(date_str: str) -> Optional[datetime]:
+    """Parse Gmail date string to datetime object"""
+    if not date_str:
+        return None
+    try:
+        # Gmail dates are typically in RFC 2822 format
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(date_str)
+    except Exception:
+        return None
+
+def prepare_email_data(service, message_ids: List[str]) -> List[Dict]:
+    """Prepare email data for database storage"""
+    email_data = []
+    total = len(message_ids)
+    
+    for i, msg_id in enumerate(message_ids, 1):
+        try:
+            print(f"Processing email {i}/{total}...")
+            # Get metadata and body
+            meta = get_message_metadata(service, msg_id)
+            body_text = get_message_body(service, msg_id, prefer_html=False)
+            body_html = get_message_body(service, msg_id, prefer_html=True)
+            
+            # Parse date
+            date_sent = parse_email_date(meta.get('Date', ''))
+            
+            email_data.append({
+                'message_id': msg_id,
+                'subject': meta.get('Subject'),
+                'sender': meta.get('From'),
+                'recipient': meta.get('To'),
+                'date_sent': date_sent,
+                'snippet': meta.get('Snippet'),
+                'body_text': body_text if body_text != body_html else body_text,
+                'body_html': body_html if body_html != body_text else None
+            })
+        except Exception as e:
+            print(f"Error processing message {msg_id}: {e}")
+            continue
+    
+    return email_data
+
 def main():
-    # 1) Create the Gmail API client (handles OAuth if needed).
-    service = get_service()
+    # 1) Get or create demo user
+    user = db_manager.get_or_create_user(DEMO_USER_EMAIL, "Demo User")
+    print(f"Working with user: {user.email} (ID: {user.id})")
 
-    # 2) Choose what you want to fetch:
-    #    A) last 50 INBOX messages
-    ids = list_message_ids(service, label_ids=["INBOX"], max_results=10)
+    # 2) Create the Gmail API client (handles OAuth if needed).
+    service = get_service(user.id)
 
-    #    B) OR use a Gmail search query (uncomment to try):
+    # 3) Fetch email IDs from Gmail
+    print("Fetching emails from Gmail...")
+    ids = list_message_ids(service, label_ids=["INBOX"], max_results=50)  # Fetch top 50 emails
+    
+    # Alternative search query (uncomment to try):
     # ids = list_message_ids(service, query="label:unread newer_than:7d subject:(invoice OR receipt)", max_results=50)
 
-    print(f"Found {len(ids)} messages")
-    for i, mid in enumerate(ids[:10], start=1):  # limit output for demo
-        meta = get_message_metadata(service, mid)
-        body = get_message_body(service, mid, prefer_html=False)
+    print(f"Found {len(ids)} messages from Gmail")
 
-        print(f"\n[{i}] ID: {meta['id']}")
-        print(f"Date:   {meta.get('Date', '')}")
-        print(f"From:   {meta.get('From', '')}")
-        print(f"To:     {meta.get('To', '')}")
-        print(f"Subj:   {meta.get('Subject', '')}")
-        print(f"Snippet:{meta.get('Snippet', '')[:120]}{'...' if len(meta.get('Snippet',''))>120 else ''}")
+    # 4) Prepare and save email data to database
+    if ids:
+        print("Processing and saving emails to database...")
+        email_data = prepare_email_data(service, ids)
+        saved_emails = db_manager.save_emails(user.id, email_data)
+        print(f"Saved {len(saved_emails)} new emails to database")
+
+    # 5) Read and display emails from database
+    print(f"\n{'='*60}")
+    print("EMAILS FROM DATABASE:")
+    print(f"{'='*60}")
+    
+    stored_emails = db_manager.get_user_emails(user.id, limit=50)
+    
+    for i, email in enumerate(stored_emails, start=1):
+        print(f"\n[{i}] ID: {email.message_id}")
+        print(f"Date:   {email.date_sent.strftime('%Y-%m-%d %H:%M:%S') if email.date_sent else 'Unknown'}")
+        print(f"From:   {email.sender or 'Unknown'}")
+        print(f"To:     {email.recipient or 'Unknown'}")
+        print(f"Subj:   {email.subject or 'No Subject'}")
+        
+        snippet = email.snippet or ""
+        print(f"Snippet:{snippet[:120]}{'...' if len(snippet) > 120 else ''}")
+        
         print("Body preview:")
+        body = email.body_text or email.body_html or ""
         print(body[:500] + ("..." if len(body) > 500 else ""))
+    
+    print(f"\nTotal emails in database for user {user.email}: {len(stored_emails)}")
 
 if __name__ == "__main__":
     main()
