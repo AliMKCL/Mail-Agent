@@ -119,7 +119,7 @@
             const userButtons = document.getElementById('userButtons');
 
             let buttonsHtml = '';
-            
+
             if (users.length === 0) {
                 buttonsHtml = '<div class="loading">No users found. Click + to add Gmail accounts.</div>';
             } else {
@@ -301,7 +301,7 @@
             const email = document.getElementById('emailInput').value.trim();
             const name = document.getElementById('nameInput').value.trim();
             const addButton = document.getElementById('addAccountBtn');
-            
+
             if (!email) {
                 alert('Please enter a Gmail address');
                 return;
@@ -338,7 +338,7 @@
                 // Reload users and hide modal
                 await loadUsers();
                 hideAddUserModal();
-                
+
                 // Show success message
                 alert(`Successfully added Gmail account: ${email}`);
 
@@ -352,7 +352,7 @@
         }
 
         // Close modal when clicking outside
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             const modal = document.getElementById('addUserModal');
             if (event.target == modal) {
                 hideAddUserModal();
@@ -382,7 +382,8 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="emailInput">Gmail Address *</label>
-                    <input type="email" id="emailInput" placeholder="user@gmail.com" onkeypress="handleModalKeyPress(event)" required>
+                    <input type="email" id="emailInput" placeholder="user@gmail.com"
+                        onkeypress="handleModalKeyPress(event)" required>
                 </div>
                 <div class="form-group">
                     <label for="nameInput">Display Name (optional)</label>
@@ -394,7 +395,8 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="modal-button cancel" onclick="hideAddUserModal()">Cancel</button>
-                <button type="button" class="modal-button primary" id="addAccountBtn" onclick="addGmailAccount()">Add Account</button>
+                <button type="button" class="modal-button primary" id="addAccountBtn" onclick="addGmailAccount()">Add
+                    Account</button>
             </div>
         </div>
     </div>
