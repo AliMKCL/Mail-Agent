@@ -20,6 +20,21 @@
             <div class="user-buttons" id="userButtons">
                 <div class="loading">Loading users...</div>
             </div>
+
+            <!-- Search bar: appears below user buttons and above the messages list -->
+            <div class="search-wrapper" id="searchWrapper" style="padding: 8px 12px;">
+                <form id="titleSearchForm" onsubmit="onTitleSearchSubmit(event)"
+                    style="display:flex;gap:8px;align-items:center;">
+                    <input id="titleSearchInput" type="search" placeholder="Search subjects..."
+                        aria-label="Search subjects"
+                        style="flex:1;padding:8px;border-radius:4px;border:1px solid #ccc;" />
+                    <button id="titleSearchBtn" type="submit"
+                        style="padding:8px 12px;border-radius:4px;border:none;background:#2b7cff;color:#fff;cursor:pointer;">Search</button>
+                    <button id="titleClearBtn" type="button" onclick="clearTitleSearch()" title="Clear search"
+                        style="padding:8px 12px;border-radius:4px;border:1px solid #ccc;background:#fff;cursor:pointer;">×</button>
+                </form>
+            </div>
+
             <div class="panel-content" id="messagesPanel">
                 <div class="messages-content" id="messagesContent">
                     <div class="loading">Select a user to view emails...</div>
@@ -208,6 +223,8 @@
         }
 
         // Load emails from API
+        // Keep a backup of the full email list in emailsBackup so we can restore after clearing a search
+        let emailsBackup = [];
         async function loadEmails() {
             if (!currentUserId) {
                 renderEmails();
@@ -221,6 +238,8 @@
                 }
 
                 emails = await response.json();
+                // Save backup copy for clearing search
+                emailsBackup = Array.isArray(emails) ? emails.slice() : [];
                 renderEmails();
             } catch (error) {
                 console.error('Error loading emails:', error);
@@ -367,6 +386,50 @@
                 hideAddUserModal();
             }
         }
+
+        // Search by title (subject) - substring match, case-insensitive. Called on form submit or pressing Enter.
+        function onTitleSearchSubmit(evt) {
+            evt.preventDefault();
+            const input = document.getElementById('titleSearchInput');
+            const query = (input.value || '').trim().toLowerCase();
+            if (!query) {
+                // empty -> restore
+                clearTitleSearch();
+                return;
+            }
+
+            // Filter backup copy to avoid losing original list
+            emails = emailsBackup.filter(e => (e.subject || '').toLowerCase().includes(query));
+            renderEmails();
+            // show clear button state
+            document.getElementById('titleClearBtn').style.display = 'inline-block';
+        }
+
+        // Clear title search and restore all mails
+        function clearTitleSearch() {
+            document.getElementById('titleSearchInput').value = '';
+            emails = emailsBackup.slice();
+            renderEmails();
+            document.getElementById('titleClearBtn').style.display = 'none';
+        }
+
+        // Wire Enter key and clear button visibility on load
+        window.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('titleSearchInput');
+            const clearBtn = document.getElementById('titleClearBtn');
+            if (input) {
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        // Let form submit handler handle it
+                        return;
+                    }
+                });
+                input.addEventListener('input', () => {
+                    clearBtn.style.display = input.value ? 'inline-block' : 'none';
+                });
+            }
+            if (clearBtn) clearBtn.style.display = 'none';
+        });
 
         // Load users and emails when page loads
         document.addEventListener('DOMContentLoaded', loadUsers);

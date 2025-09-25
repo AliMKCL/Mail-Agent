@@ -10,9 +10,11 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 from datetime import datetime
 import os
-
+from ask_ollama import slm_response
+from clean_mails import clean_email
 # Local imports
 from database import DatabaseManager
+from pprint import pprint
 
 # Initialize FastAPI app
 app = FastAPI(title="Gmail Agent", description="Web interface for Gmail email management")
@@ -29,6 +31,7 @@ class UserCreateRequest(BaseModel):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(BASE_DIR, "static")
 templates_dir = os.path.join(BASE_DIR, "templates")
+
 
 if os.path.isdir(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -136,9 +139,81 @@ async def sync_emails(user_id: Optional[int] = None):
         
         if ids:
             # Prepare and save email data
-            email_data = prepare_email_data(service, ids)
+            email_data = prepare_email_data(service, ids)   # Dict of full email data
             saved_emails = db_manager.save_emails(user_id, email_data)
+
+            dates_and_events = []
+            print("Email data to be sent to SLM (cleaning emails first):")
             
+            # Clean email content to reduce token count
+            cleaned_emails = []
+            for num, email in enumerate(email_data):
+                try:
+                    # Clean the email content using the clean_email function
+                    cleaned_content = clean_email(
+                        body_text=email.get('body_text', ''),
+                        body_html=email.get('body_html')
+                    )
+                    cleaned_emails.append({
+                        'index': num,
+                        'subject': email.get('subject', ''),
+                        'cleaned_body': cleaned_content
+                    })
+                    
+                    # Show before/after size comparison
+                    original_size = len(email.get('body_text', ''))
+                    cleaned_size = len(cleaned_content)
+                    reduction_pct = ((original_size - cleaned_size) / original_size * 100) if original_size > 0 else 0
+                    print(f"Mail {num}: {original_size} -> {cleaned_size} chars ({reduction_pct:.1f}% reduction)")
+                    
+                except Exception as e:
+                    print(f"Error cleaning email {num}: {e}")
+                    # Fallback to original body_text if cleaning fails
+                    cleaned_emails.append({
+                        'index': num,
+                        'subject': email.get('subject', ''),
+                        'cleaned_body': email.get('body_text', '')
+                    })
+            
+            # Build prompt with cleaned content
+            prompt_parts = [
+                "Based on the email content provided in the end,",
+                "extract anything related to the end date of an event in dd-mm-yyyy format, or a deadline (For an assignment, meeting, task, event etc.).",
+                "If the snippet does not contain any information regarding such a date, simply output '[]'",
+                "If there is a vague phrase (like tomorrow, next week...) assume todays date is 25.09.2025 and calculate the date.",
+                "Provide 2 things: If the snippet contains a deadline or date, extract that date, along with what it is for in 1 comprehensive sentence, in JSON format.",
+                "For the description, include ANY relevant context like location, participants, requirements etc.",
+                "If a mail has more than 1 dates, provide all of them, in JSON format.",
+                "The JSON segments should ALL be in this format: { 'date': 'dd-mm-yyyy', 'description': 'What the data is for'}",
+                "The final output should be 1 big json array containing results for each mail.",
+                "The email contents are as follows:"
+            ]
+
+            # Append each cleaned email body as a compact segment; join later to form the final prompt
+            for cleaned_email in cleaned_emails:
+                # keep the snippet compact by stripping excessive whitespace
+                body_snip = cleaned_email['cleaned_body'].strip()
+                prompt_parts.append(f"| {body_snip} |")
+
+            # Build the final prompt with two-line separators to keep readability while minimizing intermediate concatenations
+            prompt = "\n\n".join(prompt_parts)
+            
+            try:
+                response = slm_response(prompt)
+                dates_and_events.append(response)
+                print("SLM RESPONSE:")
+                if (dates_and_events):
+                    pprint(dates_and_events)
+                print("\n\n")
+                
+            except Exception as slm_error:
+                print(f"ERROR: SLM processing failed: {slm_error}")
+                print(f"ERROR: SLM error type: {type(slm_error)}")
+                # Continue without SLM results rather than failing the entire sync
+                dates_and_events.append("SLM_ERROR")
+                print("SLM processing failed, continuing without date extraction")
+            
+
             return {
                 "status": "success",
                 "message": f"Synced {len(saved_emails)} new emails",
