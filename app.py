@@ -177,23 +177,24 @@ async def sync_emails(user_id: Optional[int] = None):
             
             # Build prompt with cleaned content
             prompt_parts = [
-                "Based on the email content provided in the end,",
-                "extract anything related to the end date of an event in dd-mm-yyyy format, or a deadline (For an assignment, meeting, task, event etc.).",
-                "If the snippet does not contain any information regarding such a date, simply output '[]'",
-                "If there is a vague phrase (like tomorrow, next week...) assume todays date is 25.09.2025 and calculate the date.",
-                "Provide 2 things: If the snippet contains a deadline or date, extract that date, along with what it is for in 1 comprehensive sentence, in JSON format.",
-                "For the description, include ANY relevant context like location, participants, requirements etc.",
-                "If a mail has more than 1 dates, provide all of them, in JSON format.",
-                "The JSON segments should ALL be in this format: { 'date': 'dd-mm-yyyy', 'description': 'What the data is for'}",
-                "The final output should be 1 big json array containing results for each mail.",
-                "The email contents are as follows:"
+                "Task: Extract all event or deadline dates from the email content. ",
+                "Rules:\n",
+                "1. Output only in JSON.",
+                "2. If no relevant dates, output [].",
+                "3. Each JSON object must be: { 'date': 'dd-mm-yyyy', 'description': 'short sentence including what the date is for and any context (location, participants, requirements)' }",
+                "4. If multiple dates are present, include all in one JSON array.",
+                "5. Convert vague phrases ('tomorrow', 'next week') using reference date 25-09-2025.",
+                "6. Do NOT infer dates unless they are stated explicitly or via vague phrases (like tomorrow, next week, etc.)",
+                "7. Always use dd-mm-yyyy format for dates.",
+                "The email contents are as follows: "
             ]
 
             # Append each cleaned email body as a compact segment; join later to form the final prompt
             for cleaned_email in cleaned_emails:
                 # keep the snippet compact by stripping excessive whitespace
                 body_snip = cleaned_email['cleaned_body'].strip()
-                prompt_parts.append(f"| {body_snip} |")
+                prompt_parts.append(f"| {body_snip} ")
+                print(f"Mail body: {body_snip}\n\n")
 
             # Build the final prompt with two-line separators to keep readability while minimizing intermediate concatenations
             prompt = "\n\n".join(prompt_parts)
