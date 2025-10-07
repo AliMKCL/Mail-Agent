@@ -175,44 +175,94 @@ async def sync_emails(user_id: Optional[int] = None):
                         'cleaned_body': email.get('body_text', '')
                     })
             
-            # Build prompt with cleaned content
-            prompt_parts = [
-                "Task: Extract all event or deadline dates from the email content. ",
+            # Process emails in batches based on character count (3000 char limit per batch)
+            batch_char_limit = 3000
+            base_prompt_parts = [
+                "Task: You are a date extractor. Do not summarize or interpret. Extract only explicit or relative dates and their associated events from the text. ",
                 "Rules:\n",
-                "1. Output only in JSON.",
-                "2. If no relevant dates, output [].",
-                "3. Each JSON object must be: { 'date': 'dd-mm-yyyy', 'description': 'short sentence including what the date is for and any context (location, participants, requirements)' }",
-                "4. If multiple dates are present, include all in one JSON array.",
-                "5. Convert vague phrases ('tomorrow', 'next week') using reference date 25-09-2025.",
-                "6. Do NOT infer dates unless they are stated explicitly or via vague phrases (like tomorrow, next week, etc.)",
-                "7. Always use dd-mm-yyyy format for dates.",
+                "1. Output must be a strict JSON array only. No extra text.",
+                "2. Each item has: 'date': formatted as dd-MM-yyyy, 'description': short phrase of the event or context tied to the date",
+                "3. If a year is not given, assume the nearest year for that month",
+                "4. Resolve vague terms (e.g., 'today,' 'tomorrow,' 'next week,' 'next Monday') relative to the provided reference date: DD-MM-YYYY.",
+                "5. If no dates exist, output an empty array []",
+                "6. Never explain. Never add extra fields, never add extra data to fields.",
                 "The email contents are as follows: "
             ]
-
-            # Append each cleaned email body as a compact segment; join later to form the final prompt
-            for cleaned_email in cleaned_emails:
-                # keep the snippet compact by stripping excessive whitespace
-                body_snip = cleaned_email['cleaned_body'].strip()
-                prompt_parts.append(f"| {body_snip} ")
-                print(f"Mail body: {body_snip}\n\n")
-
-            # Build the final prompt with two-line separators to keep readability while minimizing intermediate concatenations
-            prompt = "\n\n".join(prompt_parts)
             
-            try:
-                response = slm_response(prompt)
-                dates_and_events.append(response)
-                print("SLM RESPONSE:")
-                if (dates_and_events):
-                    pprint(dates_and_events)
-                print("\n\n")
+            # Group emails into batches based on character count
+            batches = []
+            current_batch = []
+            current_batch_chars = 0
+            
+            for cleaned_email in cleaned_emails:
+                body_snip = cleaned_email['cleaned_body'].strip()
+                email_char_count = len(body_snip)
                 
-            except Exception as slm_error:
-                print(f"ERROR: SLM processing failed: {slm_error}")
-                print(f"ERROR: SLM error type: {type(slm_error)}")
-                # Continue without SLM results rather than failing the entire sync
-                dates_and_events.append("SLM_ERROR")
-                print("SLM processing failed, continuing without date extraction")
+                print(f"Mail {cleaned_email['index']}: {email_char_count} chars after cleaning")
+                
+                # If single email exceeds limit, process it alone
+                if email_char_count > batch_char_limit:
+                    # First, add current batch if it has content
+                    if current_batch:
+                        batches.append(current_batch)
+                        current_batch = []
+                        current_batch_chars = 0
+                    
+                    # Add the large email as its own batch
+                    batches.append([cleaned_email])
+                    print(f"  -> Processing large email alone ({email_char_count} chars)")
+                    
+                # If adding this email would exceed limit, start new batch
+                elif current_batch_chars + email_char_count > batch_char_limit:
+                    batches.append(current_batch)
+                    current_batch = [cleaned_email]
+                    current_batch_chars = email_char_count
+                    print(f"  -> Starting new batch (current: {email_char_count} chars)")
+                    
+                # Add to current batch
+                else:
+                    current_batch.append(cleaned_email)
+                    current_batch_chars += email_char_count
+                    print(f"  -> Added to current batch (total: {current_batch_chars} chars)")
+            
+            # Add final batch if it has content
+            if current_batch:
+                batches.append(current_batch)
+            
+            print(f"\nProcessing {len(cleaned_emails)} emails in {len(batches)} batches:")
+            
+            # Process each batch separately
+            for batch_idx, batch in enumerate(batches):
+                batch_chars = sum(len(email['cleaned_body'].strip()) for email in batch)
+                print(f"Batch {batch_idx + 1}/{len(batches)}: {len(batch)} emails, {batch_chars} chars")
+                
+                # Build prompt for this batch
+                prompt_parts = base_prompt_parts.copy()
+                
+                for cleaned_email in batch:
+                    body_snip = cleaned_email['cleaned_body'].strip()
+                    prompt_parts.append(f"| {body_snip} |")
+                
+                prompt = "\n\n".join(prompt_parts)
+                
+                try:
+                    print(f"Sending batch {batch_idx + 1} to SLM (prompt length: {len(prompt)} chars)")
+                    response = slm_response(prompt)
+                    dates_and_events.append(response)
+                    print(f"Batch {batch_idx + 1} SLM RESPONSE:")
+                    pprint(response)
+                    print()
+                    
+                except Exception as slm_error:
+                    print(f"ERROR: Batch {batch_idx + 1} SLM processing failed: {slm_error}")
+                    dates_and_events.append(f"BATCH_{batch_idx + 1}_ERROR: {slm_error}")
+                    print("Continuing with next batch...")
+            
+            print("All batches processed.")
+            print("FINAL SLM RESPONSES:")
+            if dates_and_events:
+                pprint(dates_and_events)
+            print("\n\n")
             
 
             return {
