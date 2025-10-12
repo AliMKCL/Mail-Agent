@@ -196,6 +196,9 @@ body {
 #calendarHeader {
     background-color: #168dfd;
     color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 #calendarPanel {
@@ -285,13 +288,280 @@ body {
     grid-row: 1;
 }
 
-.calendar-content {
+.calendar-header-content {
     display: flex;
-    justify-content: center;
     align-items: center;
+}
+
+.calendar-title {
+    margin-left: 8px;
+}
+
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.nav-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.nav-btn svg {
+    fill: currentColor;
+}
+
+.current-month {
+    font-weight: 600;
+    font-size: 16px;
+    min-width: 140px;
+    text-align: center;
+}
+
+.calendar-container {
+    position: relative;
     height: 100%;
-    color: #999;
+    display: flex;
+    flex-direction: column;
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    margin-bottom: 8px;
+    padding: 0 4px;
+}
+
+.weekday {
+    text-align: center;
+    font-weight: 600;
+    font-size: 12px;
+    color: #666;
+    padding: 8px 4px;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    flex: 1;
+    padding: 0 4px;
+}
+
+.calendar-day {
+    background-color: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    transition: all 0.2s ease;
+    min-height: 40px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 4px 2px;
+}
+
+.calendar-day.empty {
+    background-color: transparent;
+    border: none;
+    cursor: default;
+}
+
+.calendar-day:not(.empty):hover {
+    background-color: #e3f2fd;
+    border-color: #42a5f5;
+    transform: translateY(-1px);
+}
+
+.calendar-day.today {
+    background-color: #4285f4;
+    color: white;
+    border-color: #1976d2;
+}
+
+.calendar-day.selected {
+    background-color: #2196f3;
+    color: white;
+    border-color: #1565c0;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.event-indicators {
+    display: flex;
+    gap: 2px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.event-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #ccc;
+}
+
+.event-detail-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+    display: none;
+    overflow-y: auto;
+}
+
+.event-detail-header {
+    background-color: #4285f4;
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 6px 6px 0 0;
+}
+
+.event-detail-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.close-detail-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+}
+
+.close-detail-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.event-detail-content {
+    padding: 20px;
+}
+
+.no-events {
+    color: #666;
     font-style: italic;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.event-item {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    border-left: 4px solid #ccc;
+}
+
+.event-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.event-category {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-weight: 500;
+}
+
+.event-time {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 8px;
+}
+
+.event-description {
+    font-size: 12px;
+    color: #777;
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+.event-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.event-actions button {
+    background-color: #4285f4;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.event-actions button:hover {
+    background-color: #3367d6;
+}
+
+.event-actions button:last-child {
+    background-color: #dc3545;
+}
+
+.event-actions button:last-child:hover {
+    background-color: #c82333;
+}
+
+.add-event-btn {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    width: 100%;
+    margin-top: 16px;
+}
+
+.add-event-btn:hover {
+    background-color: #218838;
 }
 
 /* Reminders Panel */
@@ -465,7 +735,7 @@ body {
 /* Messages Search Bar */
 .search-wrapper-messages {
     flex: 1;
-    max-width: 400px;
+    max-width: 100%;
 }
 
 .search-form-messages {
@@ -762,7 +1032,33 @@ body {
 .icon {
     width: 32px;
     height: 32px;
-    color: #111827;
-    fill: #111827;
+    color: #ffffff;
+    fill: #ffffff;
     transition: color 0.2s, fill 0.2s;
+}
+
+/* Calendar Legend Styles */
+.calendar-legend {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px 8px 8px;
+    margin-top: auto;
+    border-top: 1px solid #e0e0e0;
+    background-color: #f8f9fa;
+    border-radius: 0 0 6px 6px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #666;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
 }

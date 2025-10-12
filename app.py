@@ -8,19 +8,37 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
+import pickle
+import json
 from ask_ollama import slm_response
 from clean_mails import clean_email
 # Local imports
 from database import DatabaseManager
 from pprint import pprint
+from setup_calendar import get_calendar_service, authenticate_google_calendar
+
+# Google Calendar imports
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
 
 # Initialize FastAPI app
 app = FastAPI(title="Gmail Agent", description="Web interface for Gmail email management")
 
 # Database setup
 db_manager = DatabaseManager()
+
+# Google Calendar configuration
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/calendar'
+]
+
 
 # Pydantic models
 class UserCreateRequest(BaseModel):
@@ -360,6 +378,319 @@ async def create_user_and_auth(user_data: UserCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
 
+@app.get("/api/calendar/events")
+async def get_calendar_events(user_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    """
+    Get Google Calendar events for a specific user within a date range
+    """
+    try:
+        if user_id is None:
+            raise HTTPException(status_code=400, detail="user_id parameter is required")
+        
+        # Get calendar service
+        service, error = get_calendar_service(user_id)
+        if not service:
+            if "Authentication required" in str(error):
+                auth_url, state = authenticate_google_calendar(user_id)
+                if auth_url:
+                    return {
+                        "status": "auth_required",
+                        "auth_url": auth_url,
+                        "message": "Please authenticate with Google Calendar"
+                    }
+            raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
+        
+        # Set default date range if not provided (current month)
+        if not start_date:
+            start_date = datetime.now().replace(day=1).isoformat() + 'Z'
+        if not end_date:
+            # Get last day of current month
+            next_month = datetime.now().replace(day=28) + timedelta(days=4)
+            end_date = (next_month - timedelta(days=next_month.day)).isoformat() + 'Z'
+        
+        # Fetch events from Google Calendar
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=start_date,
+            timeMax=end_date,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        # Format events for frontend
+        formatted_events = {}
+        for event in events:
+            start = event['start'].get('dateTime', event['start'].get('date'))
+            if start:
+                # Parse date
+                if 'T' in start:
+                    event_date = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                else:
+                    event_date = datetime.fromisoformat(start)
+                date_key = event_date.strftime('%Y-%m-%d');
+                
+                if date_key not in formatted_events:
+                    formatted_events[date_key] = []
+                
+                # Determine category based on event summary
+                category = "Social"  # Default
+                summary = event.get('summary', '').lower()
+                if any(word in summary for word in ['meeting', 'work', 'job', 'interview']):
+                    category = "Career"
+                elif any(word in summary for word in ['class', 'assignment', 'exam', 'study']):
+                    category = "Academic"
+                elif any(word in summary for word in ['deadline', 'due', 'submit']):
+                    category = "Deadline"
+                
+                # Format time
+                if 'dateTime' in event['start']:
+                    time_str = event_date.strftime('%I:%M %p')
+                else:
+                    time_str = 'All Day'
+                
+                formatted_events[date_key].append({
+                    "id": event['id'],
+                    "title": event.get('summary', 'No Title'),
+                    "category": category,
+                    "time": time_str,
+                    "description": event.get('description', ''),
+                    "start": start,
+                    "end": event['end'].get('dateTime', event['end'].get('date'))
+                })
+        
+        return {
+            "status": "success",
+            "events": formatted_events,
+            "message": "Calendar events retrieved successfully"
+        }
+        
+    except HttpError as e:
+        raise HTTPException(status_code=500, detail=f"Google Calendar API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching calendar events: {str(e)}")
+
+@app.post("/api/calendar/events")
+async def create_calendar_event(request_data: dict):
+    """
+    Create a new calendar event
+    """
+    try:
+        user_id = request_data.get('user_id')
+        event_data = request_data.get('event_data', {})
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        # Get calendar service
+        service, error = get_calendar_service(user_id)
+        if not service:
+            raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
+        
+        # Parse event data
+        title = event_data.get('title', 'New Event')
+        description = event_data.get('description', '')
+        date = event_data.get('date')  # Format: YYYY-MM-DD
+        time = event_data.get('time', '')  # Format: HH:MM AM/PM
+        
+        if not date:
+            raise HTTPException(status_code=400, detail="Event date is required")
+        
+        # Create event object
+        if time and time != 'All Day':
+            # Parse time and create datetime
+            try:
+                time_obj = datetime.strptime(time, '%I:%M %p').time()
+                start_datetime = datetime.combine(datetime.fromisoformat(date).date(), time_obj)
+                end_datetime = start_datetime + timedelta(hours=1)  # Default 1 hour duration
+                
+                event = {
+                    'summary': title,
+                    'description': description,
+                    'start': {
+                        'dateTime': start_datetime.isoformat(),
+                        'timeZone': 'UTC',
+                    },
+                    'end': {
+                        'dateTime': end_datetime.isoformat(),
+                        'timeZone': 'UTC',
+                    },
+                }
+            except ValueError:
+                # If time parsing fails, create all-day event
+                event = {
+                    'summary': title,
+                    'description': description,
+                    'start': {'date': date},
+                    'end': {'date': date},
+                }
+        else:
+            # All-day event
+            event = {
+                'summary': title,
+                'description': description,
+                'start': {'date': date},
+                'end': {'date': date},
+            }
+        
+        # Create event in Google Calendar
+        created_event = service.events().insert(calendarId='primary', body=event).execute()
+        
+        return {
+            "status": "success",
+            "message": "Event created successfully",
+            "event_id": created_event['id'],
+            "event_link": created_event.get('htmlLink', '')
+        }
+        
+    except HttpError as e:
+        raise HTTPException(status_code=500, detail=f"Google Calendar API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating calendar event: {str(e)}")
+
+@app.put("/api/calendar/events/{event_id}")
+async def update_calendar_event(event_id: str, request_data: dict):
+    """
+    Update an existing calendar event
+    """
+    try:
+        user_id = request_data.get('user_id')
+        event_data = request_data.get('event_data', {})
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        # Get calendar service
+        service, error = get_calendar_service(user_id)
+        if not service:
+            raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
+        
+        # Get existing event
+        event = service.events().get(calendarId='primary', eventId=event_id).execute()
+        
+        # Update event fields
+        if 'title' in event_data:
+            event['summary'] = event_data['title']
+        if 'description' in event_data:
+            event['description'] = event_data['description']
+        
+        # Handle time updates
+        if 'time' in event_data and 'date' in event_data:
+            date = event_data['date']
+            time = event_data['time']
+            
+            if time and time != 'All Day':
+                try:
+                    time_obj = datetime.strptime(time, '%I:%M %p').time()
+                    start_datetime = datetime.combine(datetime.fromisoformat(date).date(), time_obj)
+                    end_datetime = start_datetime + timedelta(hours=1)
+                    
+                    event['start'] = {
+                        'dateTime': start_datetime.isoformat(),
+                        'timeZone': 'UTC',
+                    }
+                    event['end'] = {
+                        'dateTime': end_datetime.isoformat(),
+                        'timeZone': 'UTC',
+                    }
+                except ValueError:
+                    event['start'] = {'date': date}
+                    event['end'] = {'date': date}
+            else:
+                event['start'] = {'date': date}
+                event['end'] = {'date': date}
+        
+        # Update event in Google Calendar
+        updated_event = service.events().update(calendarId='primary', eventId=event_id, body=event).execute()
+        
+        return {
+            "status": "success",
+            "message": "Event updated successfully",
+            "event_link": updated_event.get('htmlLink', '')
+        }
+        
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(status_code=404, detail="Event not found")
+        raise HTTPException(status_code=500, detail=f"Google Calendar API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating calendar event: {str(e)}")
+
+@app.delete("/api/calendar/events/{event_id}")
+async def delete_calendar_event(event_id: str, user_id: int):
+    """
+    Delete a calendar event
+    """
+    try:
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        # Get calendar service
+        service, error = get_calendar_service(user_id)
+        if not service:
+            raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
+        
+        # Delete event from Google Calendar
+        service.events().delete(calendarId='primary', eventId=event_id).execute()
+        
+        return {
+            "status": "success",
+            "message": "Event deleted successfully"
+        }
+        
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(status_code=404, detail="Event not found")
+        raise HTTPException(status_code=500, detail=f"Google Calendar API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting calendar event: {str(e)}")
+
+@app.get("/oauth/callback")
+async def oauth_callback(code: str, state: Optional[str] = None):
+    """Handle OAuth callback for Google Calendar"""
+    try:
+        flow = Flow.from_client_secrets_file('credentials.json', SCOPES)
+        flow.redirect_uri = 'http://localhost:8000/oauth/callback'
+        
+        # Exchange authorization code for credentials
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        
+        # Save credentials
+        user_id = state if state and state != 'default' else 'default'
+        token_file = f'token_{user_id}.pickle'
+        with open(token_file, 'wb') as token:
+            pickle.dump(creds, token)
+        
+        return HTMLResponse("""
+        <html>
+            <head><title>Authorization Complete</title></head>
+            <body>
+                <h2>Authorization successful!</h2>
+                <p>You can now close this window and return to the application.</p>
+                <script>
+                    setTimeout(function() {
+                        window.close();
+                    }, 3000);
+                </script>
+            </body>
+        </html>
+        """)
+        
+    except Exception as e:
+        return HTMLResponse(f"""
+        <html>
+            <head><title>Authorization Error</title></head>
+            <body>
+                <h2>Authorization failed</h2>
+                <p>Error: {str(e)}</p>
+                <p>Please try again.</p>
+            </body>
+        </html>
+        """, status_code=500)
+
+# Run the FastAPI application
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
