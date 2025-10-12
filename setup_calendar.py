@@ -50,7 +50,8 @@ def authenticate_calendar(user_id=1):
                 return False
             
             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=8080)  # Use fixed port 8080
+            # Force consent to ensure we get a refresh_token
+            creds = flow.run_local_server(port=8080, prompt='consent')  # Use fixed port 8080
             print("✅ Authentication completed successfully!")
             
             # Save the credentials to database
@@ -68,7 +69,7 @@ def get_calendar_service(user_id=None):
         db_manager = DatabaseManager()
         creds = db_manager.get_user_credentials(user_id)
         
-        # If no valid credentials, need to authenticate
+        # Check if credentials exist and are valid
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
@@ -80,6 +81,14 @@ def get_calendar_service(user_id=None):
                     return None, "Authentication required"
             else:
                 return None, "Authentication required"
+        
+        # Check if credentials include the Calendar scope
+        if creds and creds.scopes:
+            if 'https://www.googleapis.com/auth/calendar' not in creds.scopes:
+                print(f"Calendar scope missing for user {user_id}. Current scopes: {creds.scopes}")
+                return None, "Authentication required - Calendar scope missing"
+        else:
+            return None, "Authentication required - No scopes found"
         
         # Build calendar service
         service = build('calendar', 'v3', credentials=creds)
@@ -98,6 +107,7 @@ def authenticate_google_calendar(user_id=None):
         auth_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
+            prompt='consent',  # Force consent to get refresh_token
             state=str(user_id) if user_id else 'default'
         )
         

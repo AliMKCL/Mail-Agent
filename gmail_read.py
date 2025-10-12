@@ -29,8 +29,11 @@ from googleapiclient.discovery import build  # constructs API client objects (Gm
 # Local database imports
 from database import DatabaseManager, User  # database models and utilities
 
-# Ask only for read permission (least privilege).
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"] # Ensure gmail.readonly scope is selected in the OAuth client
+# Ask for Gmail and Calendar permissions
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar"
+] # Ensure both scopes are selected in the OAuth client
 
 # The fixed host/port MUST match the authorized redirect URI in your Web client.
 OAUTH_HOST = "localhost"

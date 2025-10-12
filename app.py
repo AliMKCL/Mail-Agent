@@ -152,7 +152,7 @@ async def sync_emails(user_id: Optional[int] = None):
         
         # Fetch email IDs from Gmail Primary inbox only
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
-        ids = list_message_ids(service, query=final_query, max_results=50)
+        ids = list_message_ids(service, query=final_query, max_results=20)
         print(f"DEBUG: Found {len(ids)} email IDs")
         
         if ids:
@@ -262,7 +262,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     prompt_parts.append(f"| {body_snip} |")
                 
                 prompt = "\n\n".join(prompt_parts)
-                
+                """
                 try:
                     print(f"Sending batch {batch_idx + 1} to SLM (prompt length: {len(prompt)} chars)")
                     response = slm_response(prompt)
@@ -275,6 +275,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     print(f"ERROR: Batch {batch_idx + 1} SLM processing failed: {slm_error}")
                     dates_and_events.append(f"BATCH_{batch_idx + 1}_ERROR: {slm_error}")
                     print("Continuing with next batch...")
+                """
             
             print("All batches processed.")
             print("FINAL SLM RESPONSES:")
