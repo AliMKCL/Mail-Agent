@@ -551,9 +551,13 @@
 
         // Close modal when clicking outside
         window.onclick = function (event) {
-            const modal = document.getElementById('addUserModal');
-            if (event.target == modal) {
+            const addUserModal = document.getElementById('addUserModal');
+            const addEventModal = document.getElementById('addEventModal');
+            
+            if (event.target == addUserModal) {
                 hideAddUserModal();
+            } else if (event.target == addEventModal) {
+                hideAddEventModal();
             }
         }
 
@@ -563,6 +567,15 @@
                 addGmailAccount();
             } else if (event.key === 'Escape') {
                 hideAddUserModal();
+            }
+        }
+
+        // Handle Enter key in event modal
+        function handleEventModalKeyPress(event) {
+            if (event.key === 'Enter') {
+                submitEvent();
+            } else if (event.key === 'Escape') {
+                hideAddEventModal();
             }
         }
 
@@ -757,18 +770,81 @@
             }
         }
 
-        async function addEvent(dateKey) {
-            const title = prompt('Event title:');
-            if (!title) return;
+        // Global variable to store the date for the new event
+        let selectedEventDate = null;
 
-            const category = prompt('Category (Academic, Career, Social, Deadline):') || 'Academic';
-            const time = prompt('Time (optional, format: 2:00 PM):');
-            const description = prompt('Description (optional):') || '';
-
+        function addEvent(dateKey) {
             if (!currentUserId) {
                 alert('Please select a user first');
                 return;
             }
+            
+            selectedEventDate = dateKey;
+            
+            // Format date for display
+            const date = new Date(dateKey);
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDate = date.toLocaleDateString('en-US', options);
+            
+            // Show the modal
+            document.getElementById('selectedDateDisplay').textContent = formattedDate;
+            document.getElementById('addEventModal').style.display = 'block';
+            
+            // Reset form
+            document.getElementById('eventTitleInput').value = '';
+            document.getElementById('eventDescriptionInput').value = '';
+            document.getElementById('eventTimeInput').value = '';
+            
+            // Clear category selection
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            // Focus on title input
+            document.getElementById('eventTitleInput').focus();
+        }
+
+        function hideAddEventModal() {
+            document.getElementById('addEventModal').style.display = 'none';
+            selectedEventDate = null;
+        }
+
+        // Category button selection handler
+        document.addEventListener('click', function(event) {
+            if (event.target.classList.contains('category-btn')) {
+                // Remove selection from all buttons
+                document.querySelectorAll('.category-btn').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+                
+                // Add selection to clicked button
+                event.target.classList.add('selected');
+            }
+        });
+
+        async function submitEvent() {
+            const title = document.getElementById('eventTitleInput').value.trim();
+            const description = document.getElementById('eventDescriptionInput').value.trim();
+            const time = document.getElementById('eventTimeInput').value.trim();
+            
+            // Get selected category
+            const selectedCategoryBtn = document.querySelector('.category-btn.selected');
+            const category = selectedCategoryBtn ? selectedCategoryBtn.dataset.category : 'Academic';
+            
+            if (!title) {
+                alert('Please enter an event title');
+                return;
+            }
+            
+            if (!selectedEventDate) {
+                alert('Error: No date selected');
+                return;
+            }
+
+            // Disable submit button during request
+            const submitBtn = document.getElementById('addEventBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Adding...';
 
             try {
                 const response = await fetch('/api/calendar/events', {
@@ -781,24 +857,31 @@
                         event_data: {
                             title: title,
                             description: description,
-                            date: dateKey,
-                            time: time || 'All Day'
+                            date: selectedEventDate,
+                            time: time || 'All Day',
+                            category: category
                         }
                     })
                 });
 
                 const result = await response.json();
                 if (result.status === 'success') {
+                    // Hide modal
+                    hideAddEventModal();
+                    
                     // Reload calendar events to reflect the new event
                     await loadCalendarEvents();
-                    showEventDetails(dateKey);
-                    alert('Event created successfully!');
+                    showEventDetails(selectedEventDate);
                 } else {
                     alert('Error creating event: ' + result.message);
                 }
             } catch (error) {
                 console.error('Error creating event:', error);
                 alert('Error creating event. Please try again.');
+            } finally {
+                // Re-enable submit button
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add Event';
             }
         }
 
@@ -977,6 +1060,46 @@
                 <button type="button" class="modal-button cancel" onclick="hideAddUserModal()">Cancel</button>
                 <button type="button" class="modal-button primary" id="addAccountBtn" onclick="addGmailAccount()">Add
                     Account</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Event Modal -->
+    <div id="addEventModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Calendar Event</h3>
+                <span class="close" onclick="hideAddEventModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="eventTitleInput">Event Title *</label>
+                    <input type="text" id="eventTitleInput" placeholder="Enter event title" required onkeypress="handleEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label for="eventDescriptionInput">Description</label>
+                    <input type="text" id="eventDescriptionInput" placeholder="Enter description (optional)" onkeypress="handleEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label for="eventTimeInput">Time</label>
+                    <input type="text" id="eventTimeInput" placeholder="e.g., 2:00 PM or leave empty for all-day" onkeypress="handleEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label>Category *</label>
+                    <div class="category-buttons">
+                        <button type="button" class="category-btn" data-category="Academic">Academic</button>
+                        <button type="button" class="category-btn" data-category="Social">Social</button>
+                        <button type="button" class="category-btn" data-category="Career">Career</button>
+                        <button type="button" class="category-btn" data-category="Deadline">Deadline</button>
+                    </div>
+                </div>
+                <p class="modal-note">
+                    Event will be added to <span id="selectedDateDisplay"></span>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="modal-button cancel" onclick="hideAddEventModal()">Cancel</button>
+                <button type="button" class="modal-button primary" id="addEventBtn" onclick="submitEvent()">Add Event</button>
             </div>
         </div>
     </div>

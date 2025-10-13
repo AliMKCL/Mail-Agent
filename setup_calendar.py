@@ -67,6 +67,7 @@ def get_calendar_service(user_id=None):
             return None, "User ID is required"
             
         db_manager = DatabaseManager()
+
         creds = db_manager.get_user_credentials(user_id)
         
         # Check if credentials exist and are valid

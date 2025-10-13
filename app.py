@@ -39,6 +39,8 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar'
 ]
 
+USER_ID_FOR_CALENDAR = 1
+
 
 # Pydantic models
 class UserCreateRequest(BaseModel):
@@ -389,7 +391,7 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
             raise HTTPException(status_code=400, detail="user_id parameter is required")
         
         # Get calendar service
-        service, error = get_calendar_service(user_id)
+        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
         if not service:
             if "Authentication required" in str(error):
                 auth_url, state = authenticate_google_calendar(user_id)
@@ -485,7 +487,7 @@ async def create_calendar_event(request_data: dict):
             raise HTTPException(status_code=400, detail="user_id is required")
         
         # Get calendar service
-        service, error = get_calendar_service(user_id)
+        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -563,7 +565,7 @@ async def update_calendar_event(event_id: str, request_data: dict):
             raise HTTPException(status_code=400, detail="user_id is required")
         
         # Get calendar service
-        service, error = get_calendar_service(user_id)
+        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -628,7 +630,7 @@ async def delete_calendar_event(event_id: str, user_id: int):
             raise HTTPException(status_code=400, detail="user_id is required")
         
         # Get calendar service
-        service, error = get_calendar_service(user_id)
+        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
