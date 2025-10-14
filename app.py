@@ -14,6 +14,7 @@ import pickle
 import json
 from ask_ollama import slm_response
 from clean_mails import clean_email
+from data_utils.data_recorder import record_slm_response
 # Local imports
 from database import DatabaseManager
 from pprint import pprint
@@ -198,15 +199,15 @@ async def sync_emails(user_id: Optional[int] = None):
             # Process emails in batches based on character count (3000 char limit per batch)
             batch_char_limit = 3000
             base_prompt_parts = [
-                "Task: You are a date extractor. Do not summarize or interpret. Extract only explicit or relative dates and their associated events from the text. ",
+                "[INST]Task: You are a date extractor. Do not summarize or interpret. Extract only explicit or relative dates and their associated events from the text. ",
                 "Rules:\n",
                 "1. Output must be a strict JSON array only. No extra text.",
                 "2. Each item has: 'date': formatted as dd-MM-yyyy, 'description': short phrase of the event or context tied to the date",
                 "3. If a year is not given, assume the nearest year for that month",
-                "4. Resolve vague terms (e.g., 'today,' 'tomorrow,' 'next week,' 'next Monday') relative to the provided reference date: DD-MM-YYYY.",
-                "5. If no dates exist, output an empty array []",
+                "4. If no dates exist, output an empty array []",
+                "5. Include an event and date only if the date is in the form of a deadline, not a random or past event"
                 "6. Never explain. Never add extra fields, never add extra data to fields.",
-                "The email contents are as follows: "
+                "The email contents are as follows: [/INST]"
             ]
             
             # Group emails into batches based on character count
@@ -262,13 +263,18 @@ async def sync_emails(user_id: Optional[int] = None):
                 for cleaned_email in batch:
                     body_snip = cleaned_email['cleaned_body'].strip()
                     prompt_parts.append(f"| {body_snip} |")
+                    print(body_snip)
                 
                 prompt = "\n\n".join(prompt_parts)
-                """
+                
                 try:
                     print(f"Sending batch {batch_idx + 1} to SLM (prompt length: {len(prompt)} chars)")
                     response = slm_response(prompt)
                     dates_and_events.append(response)
+                    
+                    # Record SLM response to data.json
+                    record_slm_response(response)
+                    
                     print(f"Batch {batch_idx + 1} SLM RESPONSE:")
                     pprint(response)
                     print()
@@ -277,7 +283,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     print(f"ERROR: Batch {batch_idx + 1} SLM processing failed: {slm_error}")
                     dates_and_events.append(f"BATCH_{batch_idx + 1}_ERROR: {slm_error}")
                     print("Continuing with next batch...")
-                """
+                
             
             print("All batches processed.")
             print("FINAL SLM RESPONSES:")

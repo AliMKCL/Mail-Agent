@@ -9,3 +9,6 @@ token.json
 # Database files
 gmail_agent.db
 *.db
+
+*synthetic_data.json
+*data.json

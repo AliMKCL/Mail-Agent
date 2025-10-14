@@ -553,7 +553,7 @@
         window.onclick = function (event) {
             const addUserModal = document.getElementById('addUserModal');
             const addEventModal = document.getElementById('addEventModal');
-            
+
             if (event.target == addUserModal) {
                 hideAddUserModal();
             } else if (event.target == addEventModal) {
@@ -778,28 +778,28 @@
                 alert('Please select a user first');
                 return;
             }
-            
+
             selectedEventDate = dateKey;
-            
+
             // Format date for display
             const date = new Date(dateKey);
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
             const formattedDate = date.toLocaleDateString('en-US', options);
-            
+
             // Show the modal
             document.getElementById('selectedDateDisplay').textContent = formattedDate;
             document.getElementById('addEventModal').style.display = 'block';
-            
+
             // Reset form
             document.getElementById('eventTitleInput').value = '';
             document.getElementById('eventDescriptionInput').value = '';
             document.getElementById('eventTimeInput').value = '';
-            
+
             // Clear category selection
             document.querySelectorAll('.category-btn').forEach(btn => {
                 btn.classList.remove('selected');
             });
-            
+
             // Focus on title input
             document.getElementById('eventTitleInput').focus();
         }
@@ -810,13 +810,13 @@
         }
 
         // Category button selection handler
-        document.addEventListener('click', function(event) {
+        document.addEventListener('click', function (event) {
             if (event.target.classList.contains('category-btn')) {
                 // Remove selection from all buttons
                 document.querySelectorAll('.category-btn').forEach(btn => {
                     btn.classList.remove('selected');
                 });
-                
+
                 // Add selection to clicked button
                 event.target.classList.add('selected');
             }
@@ -826,16 +826,16 @@
             const title = document.getElementById('eventTitleInput').value.trim();
             const description = document.getElementById('eventDescriptionInput').value.trim();
             const time = document.getElementById('eventTimeInput').value.trim();
-            
+
             // Get selected category
             const selectedCategoryBtn = document.querySelector('.category-btn.selected');
             const category = selectedCategoryBtn ? selectedCategoryBtn.dataset.category : 'Academic';
-            
+
             if (!title) {
                 alert('Please enter an event title');
                 return;
             }
-            
+
             if (!selectedEventDate) {
                 alert('Error: No date selected');
                 return;
@@ -868,7 +868,7 @@
                 if (result.status === 'success') {
                     // Hide modal
                     hideAddEventModal();
-                    
+
                     // Reload calendar events to reflect the new event
                     await loadCalendarEvents();
                     showEventDetails(selectedEventDate);
@@ -1074,15 +1074,18 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="eventTitleInput">Event Title *</label>
-                    <input type="text" id="eventTitleInput" placeholder="Enter event title" required onkeypress="handleEventModalKeyPress(event)">
+                    <input type="text" id="eventTitleInput" placeholder="Enter event title" required
+                        onkeypress="handleEventModalKeyPress(event)">
                 </div>
                 <div class="form-group">
                     <label for="eventDescriptionInput">Description</label>
-                    <input type="text" id="eventDescriptionInput" placeholder="Enter description (optional)" onkeypress="handleEventModalKeyPress(event)">
+                    <input type="text" id="eventDescriptionInput" placeholder="Enter description (optional)"
+                        onkeypress="handleEventModalKeyPress(event)">
                 </div>
                 <div class="form-group">
                     <label for="eventTimeInput">Time</label>
-                    <input type="text" id="eventTimeInput" placeholder="e.g., 2:00 PM or leave empty for all-day" onkeypress="handleEventModalKeyPress(event)">
+                    <input type="text" id="eventTimeInput" placeholder="e.g., 2:00 PM or leave empty for all-day"
+                        onkeypress="handleEventModalKeyPress(event)">
                 </div>
                 <div class="form-group">
                     <label>Category *</label>
@@ -1099,7 +1102,8 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="modal-button cancel" onclick="hideAddEventModal()">Cancel</button>
-                <button type="button" class="modal-button primary" id="addEventBtn" onclick="submitEvent()">Add Event</button>
+                <button type="button" class="modal-button primary" id="addEventBtn" onclick="submitEvent()">Add
+                    Event</button>
             </div>
         </div>
     </div>
