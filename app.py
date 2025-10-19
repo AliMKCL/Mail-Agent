@@ -12,13 +12,14 @@ from datetime import datetime, timedelta
 import os
 import pickle
 import json
-from ask_ollama import slm_response
+from ask_ollama import slm_response, llm_response
 from clean_mails import clean_email
 from data_utils.data_recorder import record_slm_response
 # Local imports
 from database import DatabaseManager
 from pprint import pprint
 from setup_calendar import get_calendar_service, authenticate_google_calendar
+from vector_database import embed_and_store, query_vector_db
 
 # Google Calendar imports
 from google.auth.transport.requests import Request
@@ -63,15 +64,18 @@ else:
 if os.path.isdir(templates_dir):
     app.mount("/templates", StaticFiles(directory=templates_dir), name="templates")
 
+# This endpoint is called when the main page is loaded.
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     """Serve the main HTML page using an absolute path file response"""
+    # This endpoint serves the main HTML page.
 
     index_path = os.path.join(templates_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return HTMLResponse("<h1>index.html not found</h1>", status_code=500)
 
+# This endpoint is called when the user fetches emails for a specific user.
 @app.get("/api/emails")
 async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
     """
@@ -105,6 +109,7 @@ async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dic
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching emails: {str(e)}")
 
+# This endpoint is called when the sync button is pressed to fetch new emails.
 @app.get("/api/sync")
 async def sync_emails(user_id: Optional[int] = None):
     """
@@ -124,12 +129,14 @@ async def sync_emails(user_id: Optional[int] = None):
         # Get the date of the most recent email we have stored
         latest_date = db_manager.get_latest_email_date(user_id)
         
+
+        flag = False
         # Build Gmail search query to fetch only newer emails
         query = ""
         if latest_date:
             # Calculate days since the latest email for newer_than syntax
             days_since = (datetime.now() - latest_date).days
-            if days_since == 0:
+            if days_since == 0 and flag == True:
                 # If it's the same day, use hours
                 hours_since = (datetime.now() - latest_date).total_seconds() / 3600
                 if hours_since < 1:
@@ -137,7 +144,8 @@ async def sync_emails(user_id: Optional[int] = None):
                 else:
                     query = f"newer_than:{int(hours_since)}h"
             else:
-                query = f"newer_than:{days_since}d"
+                #query = f"newer_than:{days_since}d"
+                query = f"newer_than:{3}d"
             
             print(f"DEBUG: Latest email date: {latest_date}")
             print(f"DEBUG: Days since latest: {days_since}")
@@ -195,6 +203,21 @@ async def sync_emails(user_id: Optional[int] = None):
                         'subject': email.get('subject', ''),
                         'cleaned_body': email.get('body_text', '')
                     })
+            
+            # Embed the cleaned mails in the vector db
+            # Combine cleaned content with original metadata for complete documents
+            emails_for_embedding = []
+            for idx, cleaned_email in enumerate(cleaned_emails):
+                original_email = email_data[idx]
+                emails_for_embedding.append({
+                    'message_id': original_email.get('message_id', ''),
+                    'sender': original_email.get('sender', ''),
+                    'subject': original_email.get('subject', ''),
+                    'date_sent': original_email.get('date_sent', ''),
+                    'body_text': cleaned_email.get('cleaned_body', '')  # Use cleaned content
+                })
+            
+            await embed_and_store(emails_for_embedding)
             
             # Process emails in batches based on character count (3000 char limit per batch)
             batch_char_limit = 3000
@@ -266,14 +289,14 @@ async def sync_emails(user_id: Optional[int] = None):
                     print(body_snip)
                 
                 prompt = "\n\n".join(prompt_parts)
-                
+                """
                 try:
                     print(f"Sending batch {batch_idx + 1} to SLM (prompt length: {len(prompt)} chars)")
                     response = slm_response(prompt)
                     dates_and_events.append(response)
                     
                     # Record SLM response to data.json
-                    record_slm_response(response)
+                    #record_slm_response(response)
                     
                     print(f"Batch {batch_idx + 1} SLM RESPONSE:")
                     pprint(response)
@@ -283,6 +306,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     print(f"ERROR: Batch {batch_idx + 1} SLM processing failed: {slm_error}")
                     dates_and_events.append(f"BATCH_{batch_idx + 1}_ERROR: {slm_error}")
                     print("Continuing with next batch...")
+                """
                 
             
             print("All batches processed.")
@@ -323,6 +347,7 @@ async def sync_emails(user_id: Optional[int] = None):
         else:
             raise HTTPException(status_code=500, detail=f"Error syncing emails: {error_msg}")
 
+# This endpoint is called to retrieve all users from the database.
 @app.get("/api/users")
 async def get_users():
     """Get all users from the database"""
@@ -340,6 +365,7 @@ async def get_users():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
 
+# This endpoint is called to fetch detailed information about a specific user.
 @app.get("/api/user/{user_id}")
 async def get_user_info(user_id: int):
     """Get specific user information"""
@@ -359,6 +385,7 @@ async def get_user_info(user_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching user info: {str(e)}")
 
+# This endpoint is called when creating a new user and initiating the OAuth flow.
 @app.post("/api/users")
 async def create_user_and_auth(user_data: UserCreateRequest):
     """Create a new user and initiate OAuth flow"""
@@ -387,6 +414,7 @@ async def create_user_and_auth(user_data: UserCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
 
+# This endpoint is called to fetch calendar events for a user within a date range.
 @app.get("/api/calendar/events")
 async def get_calendar_events(user_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
@@ -480,6 +508,7 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching calendar events: {str(e)}")
 
+# This endpoint is called when creating a new calendar event via the modal.
 @app.post("/api/calendar/events")
 async def create_calendar_event(request_data: dict):
     """
@@ -558,6 +587,7 @@ async def create_calendar_event(request_data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating calendar event: {str(e)}")
 
+# This endpoint is called when updating an existing calendar event.
 @app.put("/api/calendar/events/{event_id}")
 async def update_calendar_event(event_id: str, request_data: dict):
     """
@@ -626,6 +656,7 @@ async def update_calendar_event(event_id: str, request_data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating calendar event: {str(e)}")
 
+# This endpoint is called when deleting a calendar event.
 @app.delete("/api/calendar/events/{event_id}")
 async def delete_calendar_event(event_id: str, user_id: int):
     """
@@ -655,6 +686,7 @@ async def delete_calendar_event(event_id: str, user_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting calendar event: {str(e)}")
 
+# This endpoint is called during the OAuth callback after user authentication.
 @app.get("/oauth/callback")
 async def oauth_callback(code: str, state: Optional[str] = None):
     """Handle OAuth callback for Google Calendar"""
@@ -698,6 +730,104 @@ async def oauth_callback(code: str, state: Optional[str] = None):
             </body>
         </html>
         """, status_code=500)
+
+# This endpoint is called when the user types in the search bar and submits a query.
+@app.get("/api/query")
+async def query_vector_database(query: str, top_k: int = 2):
+    """
+    Query the vector database for relevant email content and generate AI response
+    Returns an AI-generated answer based on the retrieved email context
+    """
+    try:
+        if not query:
+            raise HTTPException(status_code=400, detail="Query parameter is required")
+        
+        # Query the vector database (it's async)
+        results = await query_vector_db(query, top_k=top_k)
+        
+        if not results:
+            return {
+                "status": "success",
+                "answer": "I couldn't find any relevant emails to answer your question.",
+                "sources": [],
+                "count": 0
+            }
+        
+        # Build context from retrieved emails
+        context_parts = []
+        sources = []
+        
+        for idx, doc in enumerate(results, 1):
+            sender = doc.metadata.get("sender", "Unknown")
+            subject = doc.metadata.get("subject", "No Subject")
+            date = doc.metadata.get("date_sent", "Unknown date")
+            content = doc.page_content 
+            
+            context_parts.append(f"Email {idx}:\nFrom: {sender}\nSubject: {subject}\nDate: {date}\nContent: {content}\n")
+            
+            sources.append({
+                "message_id": doc.metadata.get("message_id", ""),
+                "sender": sender,
+                "subject": subject,
+                "date_sent": date
+            })
+        
+        context = "\n---\n".join(context_parts)
+        
+        # Create prompt for SLM
+        prompt = f"""[INST]You are a helpful email assistant. Answer the user's question based on the provided email context.
+
+                User Question: {query}
+
+                Email Context:
+                {context}
+
+                Instructions:
+                - Answer the question directly and concisely
+                - Use information from the emails provided
+                - If the emails don't contain enough information, say so
+                - Be conversational and helpful
+                - Do not make up information not present in the emails
+
+                Answer:[/INST]"""
+        
+        # Get AI response
+        try:
+            #ai_response = slm_response(prompt)
+            chatgpt_response = llm_response(prompt)
+            """
+            # Extract text response (slm_response might return various formats)
+            if isinstance(ai_response, str):
+                answer = ai_response
+            elif isinstance(ai_response, dict) and 'response' in ai_response:
+                answer = ai_response['response']
+            elif isinstance(ai_response, list):
+                answer = str(ai_response)
+            else:
+                answer = str(ai_response)
+            """
+            if isinstance(chatgpt_response, str):
+                answer = chatgpt_response
+            elif isinstance(chatgpt_response, dict) and 'response' in chatgpt_response:
+                answer = chatgpt_response['response']
+            elif isinstance(chatgpt_response, list):
+                answer = str(chatgpt_response)
+            else:
+                answer = str(chatgpt_response)
+                
+        except Exception as slm_error:
+            print(f"SLM error: {slm_error}")
+            answer = "I found relevant emails but encountered an error generating a response. Please try again."
+        
+        return {
+            "status": "success",
+            "answer": answer,
+            "sources": sources,
+            "count": len(sources)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error querying vector database: {str(e)}")
 
 # Run the FastAPI application
 if __name__ == "__main__":

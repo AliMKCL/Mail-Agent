@@ -2,6 +2,14 @@ import requests
 import json
 import os
 
+from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# For testing using llm.
+client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 def slm_response(query: str):
 
@@ -71,3 +79,14 @@ def slm_response(query: str):
         pass
 
     return final_text
+
+
+def llm_response(query: str):
+    response = client.chat.completions.create(
+        model="gpt-5-mini",
+        messages=[{"role": "user", "content": query}]
+    )
+
+    raw_response= response.choices[0].message.content.strip()
+
+    return raw_response

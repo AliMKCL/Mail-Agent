@@ -46,7 +46,7 @@ def get_service(user_id: int):
     """
     Create an authorized Gmail API client using database-stored credentials.
     - Reuses stored credentials from database if present (auto-refreshes access token).
-    - Ixf no token or invalid, runs OAuth flow and saves to database.
+    - If no token or invalid, runs OAuth flow and saves to database.
     """
     creds: Optional[Credentials] = None
 
@@ -232,6 +232,7 @@ def prepare_email_data(service, message_ids: List[str]) -> List[Dict]:
     
     return email_data
 
+# For testing: Run this script directly to read emails for all users in the database
 def main():
     # 1) Get all users from database
     users = db_manager.get_all_users()
