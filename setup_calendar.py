@@ -35,12 +35,14 @@ def authenticate_calendar(user_id=1):
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
+                print(f"🔄 Attempting to refresh expired token for user {user_id}...")
                 creds.refresh(Request())
                 print("✅ Credentials refreshed successfully!")
                 # Save refreshed credentials back to database
                 db_manager.save_user_token(user_id, creds)
             except Exception as e:
                 print(f"❌ Error refreshing credentials: {e}")
+                print("   Triggering re-authentication...")
                 creds = None
         
         if not creds:
@@ -49,13 +51,14 @@ def authenticate_calendar(user_id=1):
                 print("Please download it from Google Cloud Console and place it in this directory.")
                 return False
             
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            # Force consent to ensure we get a refresh_token
-            creds = flow.run_local_server(port=8080, prompt='consent')  # Use fixed port 8080
-            print("✅ Authentication completed successfully!")
+            # Use the centralized re-authentication function
+            from reauth_user import reauthenticate_user_token_failure
+            creds = reauthenticate_user_token_failure(user_id)
             
-            # Save the credentials to database
-            db_manager.save_user_token(user_id, creds)
+            if not creds:
+                print("❌ Re-authentication failed. Cannot proceed without valid credentials.")
+                return False
+                
             print(f"✅ Credentials saved to database for user ID {user_id}")
     
     return True
@@ -74,13 +77,23 @@ def get_calendar_service(user_id=None):
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
+                    print(f"🔄 Attempting to refresh expired token for user {user_id}...")
                     creds.refresh(Request())
                     # Save refreshed credentials back to database
                     db_manager.save_user_token(user_id, creds)
+                    print(f"✅ Token refreshed successfully for user {user_id}")
                 except Exception as e:
-                    print(f"Error refreshing credentials: {e}")
-                    return None, "Authentication required"
+                    print(f"❌ Error refreshing credentials for user {user_id}: {e}")
+                    print("   Triggering re-authentication...")
+                    
+                    # Use centralized re-authentication
+                    from reauth_user import reauthenticate_user_token_failure
+                    creds = reauthenticate_user_token_failure(user_id)
+                    
+                    if not creds:
+                        return None, "Re-authentication failed"
             else:
+                print(f"⚠️  No valid credentials for user {user_id}")
                 return None, "Authentication required"
         
         # Check if credentials include the Calendar scope

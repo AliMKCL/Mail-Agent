@@ -136,7 +136,7 @@ async def sync_emails(user_id: Optional[int] = None):
         if latest_date:
             # Calculate days since the latest email for newer_than syntax
             days_since = (datetime.now() - latest_date).days
-            if days_since == 0 and flag == True:
+            if days_since == 0 and flag == False:
                 # If it's the same day, use hours
                 hours_since = (datetime.now() - latest_date).total_seconds() / 3600
                 if hours_since < 1:
@@ -145,7 +145,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     query = f"newer_than:{int(hours_since)}h"
             else:
                 #query = f"newer_than:{days_since}d"
-                query = f"newer_than:{3}d"
+                query = f"newer_than:{days_since}d"
             
             print(f"DEBUG: Latest email date: {latest_date}")
             print(f"DEBUG: Days since latest: {days_since}")
@@ -289,6 +289,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     print(body_snip)
                 
                 prompt = "\n\n".join(prompt_parts)
+                # Commented out slm response for testing as this took too long.
                 """
                 try:
                     print(f"Sending batch {batch_idx + 1} to SLM (prompt length: {len(prompt)} chars)")
@@ -425,7 +426,12 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
             raise HTTPException(status_code=400, detail="user_id parameter is required")
         
         # Get calendar service
-        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        try:
+            service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        except Exception as e:
+            print(f"Exception in get_calendar_service: {e}")
+            raise HTTPException(status_code=500, detail=f"Calendar service error: {str(e)}")
+        
         if not service:
             if "Authentication required" in str(error):
                 auth_url, state = authenticate_google_calendar(user_id)
@@ -522,7 +528,12 @@ async def create_calendar_event(request_data: dict):
             raise HTTPException(status_code=400, detail="user_id is required")
         
         # Get calendar service
-        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        try:
+            service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        except Exception as e:
+            print(f"Exception in get_calendar_service (POST): {e}")
+            raise HTTPException(status_code=500, detail=f"Calendar service error: {str(e)}")
+        
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -731,6 +742,32 @@ async def oauth_callback(code: str, state: Optional[str] = None):
         </html>
         """, status_code=500)
 
+# Diagnostic endpoint to check calendar service status
+@app.get("/api/calendar/status")
+async def check_calendar_status():
+    """Check if calendar service is available"""
+    try:
+        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        if service:
+            return {
+                "status": "success",
+                "message": f"Calendar service is working for user {USER_ID_FOR_CALENDAR}",
+                "user_id": USER_ID_FOR_CALENDAR
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Calendar service failed: {error}",
+                "user_id": USER_ID_FOR_CALENDAR,
+                "error": error
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Exception: {str(e)}",
+            "user_id": USER_ID_FOR_CALENDAR
+        }
+
 # This endpoint is called when the user types in the search bar and submits a query.
 @app.get("/api/query")
 async def query_vector_database(query: str, top_k: int = 2):
@@ -794,7 +831,7 @@ async def query_vector_database(query: str, top_k: int = 2):
         # Get AI response
         try:
             #ai_response = slm_response(prompt)
-            chatgpt_response = llm_response(prompt)
+            chatgpt_response = llm_response(prompt) # chatgpt response for testing.
             """
             # Extract text response (slm_response might return various formats)
             if isinstance(ai_response, str):

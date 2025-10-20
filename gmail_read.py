@@ -56,38 +56,34 @@ def get_service(user_id: int):
     # 2) If no valid creds, do the OAuth dance.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:  # Token is outdated and refresh token is available
-            # Refresh silently using the refresh token.
-            creds.refresh(Request())
-            # Save refreshed credentials back to database
-            db_manager.save_user_token(user_id, creds)
+            try:
+                print(f"🔄 Attempting to refresh expired token for user {user_id}...")
+                # Refresh silently using the refresh token.
+                creds.refresh(Request())
+                # Save refreshed credentials back to database
+                db_manager.save_user_token(user_id, creds)
+                print(f"✅ Token refreshed successfully for user {user_id}")
+            except Exception as refresh_error:
+                print(f"❌ Token refresh failed for user {user_id}: {refresh_error}")
+                print(f"   This usually means the refresh token is expired or revoked.")
+                print(f"   Triggering re-authentication...")
+                
+                # Import and call the re-authentication function
+                from reauth_user import reauthenticate_user_token_failure
+                creds = reauthenticate_user_token_failure(user_id)
+                
+                if not creds:
+                    raise Exception(f"Re-authentication failed for user {user_id}. Cannot proceed without valid credentials.")
         else:
-            # Start the Installed App flow, but bind to a fixed localhost port.
-            # This is compatible with WEB clients as long as the redirect URI matches.
-
-            # Creates an OAuth2 flow from credentials.json.
-            # OAuth flow: How a client can receive an access token
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-
-            # run_local_server starts a tiny HTTP server on localhost and opens the browser.
-            # It uses http://<host>:<port>/ as the redirect URI internally.
-
-            # Starts a tiny HTTP server on the host/port that:
-            #  Opens browser
-            #  Waits for Google to redirect back with an authorization code
-            #  Exchanges the code for an access token and refresh token
-            creds = flow.run_local_server(
-                host=OAUTH_HOST,
-                port=OAUTH_PORT,
-                authorization_prompt_message="Your browser will open for Google sign-in…",
-                success_message="You may close this tab and return to the app.",
-                open_browser=True,
-                # These parameters ensure we get a refresh token:
-                access_type='offline',    # Request offline access to get refresh token
-                prompt='consent'          # Force consent screen even if user already authorized
-            )
-
-            # 3) Save credentials to database instead of file.
-            db_manager.save_user_token(user_id, creds)
+            print(f"⚠️  No valid credentials found for user {user_id}")
+            print(f"   Triggering initial authentication...")
+            
+            # Import and call the re-authentication function (works for initial auth too)
+            from reauth_user import reauthenticate_user_token_failure
+            creds = reauthenticate_user_token_failure(user_id)
+            
+            if not creds:
+                raise Exception(f"Authentication failed for user {user_id}. Cannot proceed without valid credentials.")
 
     # 4) Build the Gmail client object with authorized credentials.
     return build("gmail", "v1", credentials=creds)
