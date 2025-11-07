@@ -3,7 +3,7 @@
 Script to list all Gmail user accounts in the database.
 """
 
-from database import DatabaseManager
+from backend.databases.database import DatabaseManager
 
 def main():
     db_manager = DatabaseManager()

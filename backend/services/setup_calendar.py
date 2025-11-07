@@ -9,7 +9,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from database import DatabaseManager
+from backend.databases.database import DatabaseManager
+from backend.utilities.reauth_user import reauthenticate_user_token_failure
 
 # Scopes needed for Gmail and Calendar access
 SCOPES = [
@@ -52,7 +53,7 @@ def authenticate_calendar(user_id=1):
                 return False
             
             # Use the centralized re-authentication function
-            from reauth_user import reauthenticate_user_token_failure
+            
             creds = reauthenticate_user_token_failure(user_id)
             
             if not creds:
@@ -87,7 +88,6 @@ def get_calendar_service(user_id=None):
                     print("   Triggering re-authentication...")
                     
                     # Use centralized re-authentication
-                    from reauth_user import reauthenticate_user_token_failure
                     creds = reauthenticate_user_token_failure(user_id)
                     
                     if not creds:

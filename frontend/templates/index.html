@@ -600,7 +600,7 @@
                 showAIResponseModal(query, 'Loading...', []);
 
                 // Query the vector database API
-                const response = await fetch(`/api/query?query=${encodeURIComponent(query)}&top_k=2`);
+                const response = await fetch(`/api/query?query=${encodeURIComponent(query)}&top_k=5`);
                 const data = await response.json();
 
                 if (data.status === 'success') {

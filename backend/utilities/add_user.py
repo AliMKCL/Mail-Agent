@@ -9,8 +9,8 @@ This script will:
 """
 
 import sys
-from database import DatabaseManager
-from gmail_read import get_service
+from backend.databases.database import DatabaseManager
+from backend.services.gmail_read import get_service
 
 def main():
     db_manager = DatabaseManager()

@@ -27,7 +27,9 @@ from google.auth.transport.requests import Request  # helper for making HTTP req
 from googleapiclient.discovery import build  # constructs API client objects (Gmail API client)
 
 # Local database imports
-from database import DatabaseManager, User  # database models and utilities
+from backend.databases.database import DatabaseManager, User  # database models and utilities
+
+from backend.utilities.reauth_user import reauthenticate_user_token_failure
 
 # Ask for Gmail and Calendar permissions
 SCOPES = [
@@ -69,7 +71,6 @@ def get_service(user_id: int):
                 print(f"   Triggering re-authentication...")
                 
                 # Import and call the re-authentication function
-                from reauth_user import reauthenticate_user_token_failure
                 creds = reauthenticate_user_token_failure(user_id)
                 
                 if not creds:
@@ -79,7 +80,6 @@ def get_service(user_id: int):
             print(f"   Triggering initial authentication...")
             
             # Import and call the re-authentication function (works for initial auth too)
-            from reauth_user import reauthenticate_user_token_failure
             creds = reauthenticate_user_token_failure(user_id)
             
             if not creds:

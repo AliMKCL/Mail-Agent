@@ -1,11 +1,15 @@
 from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+from pathlib import Path
 
 # Load the local embeddings model
 embeddings = OllamaEmbeddings(model="mxbai-embed-large")
 
-db_location = "./vector_database"
+# compute absolute path relative to THIS file
+HERE = Path(__file__).resolve().parent    # backend/databases
+PROJECT_ROOT = HERE.parent.parent          # Mail_agent
+db_location = str(PROJECT_ROOT / "vector_database")
 
 collection = Chroma(
     persist_directory=db_location, 

@@ -12,14 +12,16 @@ from datetime import datetime, timedelta
 import os
 import pickle
 import json
-from ask_ollama import slm_response, llm_response
-from clean_mails import clean_email
-from data_utils.data_recorder import record_slm_response
+from backend.utilities.ask_ollama import slm_response, llm_response
+from backend.utilities.clean_mails import clean_email
+from backend.data_utils.data_recorder import record_slm_response
 # Local imports
-from database import DatabaseManager
+from backend.databases.database import DatabaseManager
 from pprint import pprint
-from setup_calendar import get_calendar_service, authenticate_google_calendar
-from vector_database import embed_and_store, query_vector_db
+from backend.services.setup_calendar import get_calendar_service, authenticate_google_calendar
+from backend.databases.vector_database import embed_and_store, query_vector_db
+from backend.services.gmail_read import get_service, list_message_ids, prepare_email_data
+from datetime import datetime, timedelta
 
 # Google Calendar imports
 from google.auth.transport.requests import Request
@@ -51,8 +53,8 @@ class UserCreateRequest(BaseModel):
 
 # Use absolute paths so StaticFiles works even if the process cwd differs
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-static_dir = os.path.join(BASE_DIR, "static")
-templates_dir = os.path.join(BASE_DIR, "templates")
+static_dir = os.path.join(BASE_DIR, "../frontend/static")
+templates_dir = os.path.join(BASE_DIR, "../frontend/templates")
 
 
 if os.path.isdir(static_dir):
@@ -117,9 +119,7 @@ async def sync_emails(user_id: Optional[int] = None):
     This endpoint can be called to fetch new emails
     """
     try:
-        from gmail_read import get_service, list_message_ids, prepare_email_data
-        from datetime import datetime, timedelta
-        
+    
         if user_id is None:
             raise HTTPException(status_code=400, detail="user_id parameter is required")
         
@@ -145,7 +145,7 @@ async def sync_emails(user_id: Optional[int] = None):
                     query = f"newer_than:{int(hours_since)}h"
             else:
                 #query = f"newer_than:{days_since}d"
-                query = f"newer_than:{days_since}d"
+                query = f"newer_than:{10}d"
             
             print(f"DEBUG: Latest email date: {latest_date}")
             print(f"DEBUG: Days since latest: {days_since}")
@@ -163,7 +163,7 @@ async def sync_emails(user_id: Optional[int] = None):
         
         # Fetch email IDs from Gmail Primary inbox only
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
-        ids = list_message_ids(service, query=final_query, max_results=20)
+        ids = list_message_ids(service, query=final_query, max_results=50)
         print(f"DEBUG: Found {len(ids)} email IDs")
         
         if ids:
@@ -208,6 +208,7 @@ async def sync_emails(user_id: Optional[int] = None):
             # Combine cleaned content with original metadata for complete documents
             emails_for_embedding = []
             for idx, cleaned_email in enumerate(cleaned_emails):
+                print(f"Embedding mail {idx}")
                 original_email = email_data[idx]
                 emails_for_embedding.append({
                     'message_id': original_email.get('message_id', ''),
@@ -217,7 +218,21 @@ async def sync_emails(user_id: Optional[int] = None):
                     'body_text': cleaned_email.get('cleaned_body', '')  # Use cleaned content
                 })
             
-            await embed_and_store(emails_for_embedding)
+            # Embed the mails in the vector database.
+            try:
+                await embed_and_store(emails_for_embedding)
+            except Exception as embed_err:
+                # Log full traceback for debugging and return a clear API error
+                import traceback
+                tb = traceback.format_exc()
+                print("ERROR during embed_and_store:\n", tb)
+                # Return a structured error so frontend can surface it
+                return {
+                    "status": "error",
+                    "message": "Failed to embed emails into vector database",
+                    "error": str(embed_err),
+                    "traceback": tb
+                }
             
             # Process emails in batches based on character count (3000 char limit per batch)
             batch_char_limit = 3000
@@ -371,7 +386,7 @@ async def get_users():
 async def get_user_info(user_id: int):
     """Get specific user information"""
     try:
-        from database import User
+        from databases.database import User
         with db_manager.get_session() as session:
             user = session.query(User).filter_by(id=user_id).first()
             if not user:
@@ -391,8 +406,6 @@ async def get_user_info(user_id: int):
 async def create_user_and_auth(user_data: UserCreateRequest):
     """Create a new user and initiate OAuth flow"""
     try:
-        from gmail_read import get_service
-        
         email = user_data.email
         name = user_data.name
         
@@ -770,7 +783,7 @@ async def check_calendar_status():
 
 # This endpoint is called when the user types in the search bar and submits a query.
 @app.get("/api/query")
-async def query_vector_database(query: str, top_k: int = 2):
+async def query_vector_database(query: str, top_k: int = 3):
     """
     Query the vector database for relevant email content and generate AI response
     Returns an AI-generated answer based on the retrieved email context
