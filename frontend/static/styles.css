@@ -157,9 +157,9 @@ body {
 
 /* Sync Button */
 .sync-button {
-    background-color: rgba(255, 255, 255, 0.25);
-    color: white;
-    border: none;
+    background-color: #3f8efd;
+    color: rgb(255, 255, 255);
+    border: None;
     padding: 10px 18px;
     border-radius: 6px;
     cursor: pointer;
@@ -408,16 +408,15 @@ body {
 .event-indicators {
     display: flex;
     gap: 2px;
-    margin-top: 4px;
-    flex-wrap: wrap;
-    justify-content: center;
+    margin-top: auto;
+    padding-top: 4px;
 }
 
 .event-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background-color: #ccc;
+    background-color: #007bff;
 }
 
 .event-detail-panel {
@@ -473,6 +472,36 @@ body {
 
 .event-detail-content {
     padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.events-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.events-grid::-webkit-scrollbar {
+    width: 8px;
+}
+
+.events-grid::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.events-grid::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+}
+
+.events-grid::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
 }
 
 .no-events {
@@ -483,67 +512,107 @@ body {
 }
 
 .event-item {
-    background-color: #f8f9fa;
+    background-color: #ffffff;
     border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 12px;
-    border-left: 4px solid #ccc;
+    padding: 16px;
+    border: 2px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 120px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    position: relative;
+}
+
+.event-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.event-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-radius: 8px 8px 0 0;
 }
 
 .event-title {
     font-weight: 600;
     font-size: 14px;
     color: #333;
-    margin-bottom: 4px;
+    line-height: 1.3;
+    word-wrap: break-word;
 }
 
 .event-category {
-    font-size: 12px;
+    font-size: 11px;
     color: #666;
-    margin-bottom: 4px;
     text-transform: uppercase;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
 .event-time {
     font-size: 12px;
-    color: #888;
-    margin-bottom: 8px;
+    color: #555;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.event-time::before {
+    content: '🕐';
+    font-size: 12px;
 }
 
 .event-description {
     font-size: 12px;
     color: #777;
-    margin-top: 4px;
-    line-height: 1.3;
+    line-height: 1.4;
+    word-wrap: break-word;
+    flex-grow: 1;
 }
 
 .event-actions {
     display: flex;
-    gap: 8px;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid #e0e0e0;
 }
 
 .event-actions button {
-    background-color: #4285f4;
-    color: white;
-    border: none;
-    padding: 4px 8px;
+    flex: 1;
+    background-color: #f0f0f0;
+    color: #333;
+    border: 1px solid #d0d0d0;
+    padding: 6px 8px;
     border-radius: 4px;
     font-size: 11px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
 }
 
 .event-actions button:hover {
-    background-color: #3367d6;
+    background-color: #e0e0e0;
+    border-color: #b0b0b0;
 }
 
 .event-actions button:last-child {
-    background-color: #dc3545;
+    background-color: #fee;
+    color: #d32f2f;
+    border-color: #f8bbd0;
 }
 
 .event-actions button:last-child:hover {
-    background-color: #c82333;
+    background-color: #fdd;
+    border-color: #f48fb1;
 }
 
 .add-event-btn {
@@ -905,6 +974,15 @@ body {
     background-color: #3367d6;
 }
 
+.modal-button.danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.modal-button.danger:hover {
+    background-color: #c82333;
+}
+
 .modal-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -1064,7 +1142,8 @@ body {
 }
 
 /* Category Button Styles */
-.category-buttons {
+.category-buttons,
+.edit-category-buttons {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
