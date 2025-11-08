@@ -490,15 +490,12 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
                 if date_key not in formatted_events:
                     formatted_events[date_key] = []
                 
-                # Determine category based on event summary
-                category = "Social"  # Default
-                summary = event.get('summary', '').lower()
-                if any(word in summary for word in ['meeting', 'work', 'job', 'interview']):
-                    category = "Career"
-                elif any(word in summary for word in ['class', 'assignment', 'exam', 'study']):
-                    category = "Academic"
-                elif any(word in summary for word in ['deadline', 'due', 'submit']):
-                    category = "Deadline"
+                # Get category from extendedProperties if it exists
+                category = None
+                ext_props = event.get('extendedProperties', {})
+                private_props = ext_props.get('private', {})
+                if private_props and 'category' in private_props:
+                    category = private_props['category']
                 
                 # Format time
                 if 'dateTime' in event['start']:
@@ -555,6 +552,7 @@ async def create_calendar_event(request_data: dict):
         description = event_data.get('description', '')
         date = event_data.get('date')  # Format: YYYY-MM-DD
         time = event_data.get('time', '')  # Format: HH:MM AM/PM
+        category = event_data.get('category')  # User-selected category
         
         if not date:
             raise HTTPException(status_code=400, detail="Event date is required")
@@ -594,6 +592,15 @@ async def create_calendar_event(request_data: dict):
                 'description': description,
                 'start': {'date': date},
                 'end': {'date': date},
+            }
+        
+        # Store category in extendedProperties so it persists with the event
+        # Google API expects metadata for events in extendedProperties["private/shared"]
+        if category:
+            event['extendedProperties'] = {
+                'private': {
+                    'category': category
+                }
             }
         
         # Create event in Google Calendar
@@ -637,6 +644,14 @@ async def update_calendar_event(event_id: str, request_data: dict):
             event['summary'] = event_data['title']
         if 'description' in event_data:
             event['description'] = event_data['description']
+        
+        # Update category if provided (Create extendedProperties if not exist)
+        if 'category' in event_data:
+            if 'extendedProperties' not in event:
+                event['extendedProperties'] = {'private': {}}
+            if 'private' not in event['extendedProperties']:
+                event['extendedProperties']['private'] = {}
+            event['extendedProperties']['private']['category'] = event_data['category']
         
         # Handle time updates
         if 'time' in event_data and 'date' in event_data:

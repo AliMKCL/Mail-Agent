@@ -399,10 +399,16 @@ body {
 }
 
 .calendar-day.selected {
-    background-color: #2196f3;
-    color: white;
-    border-color: #1565c0;
+    background-color: #f8f9fa;
+    color: #333;
+    border-color: #4285f4;
     box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.calendar-day.today.selected {
+    background-color: #4285f4;
+    color: white;
+    border-color: #1976d2;
 }
 
 .event-indicators {
@@ -548,6 +554,13 @@ body {
     word-wrap: break-word;
 }
 
+.event-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
 .event-category {
     font-size: 11px;
     color: #666;
@@ -557,17 +570,18 @@ body {
 }
 
 .event-time {
-    font-size: 12px;
+    font-size: 11px;
     color: #555;
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 4px;
+    white-space: nowrap;
 }
 
 .event-time::before {
     content: '🕐';
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .event-description {

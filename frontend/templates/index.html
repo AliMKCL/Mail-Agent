@@ -210,7 +210,7 @@
         const eventCategories = {
             'Academic': '#ff6b6b',
             'Career': '#4ecdc4',
-            'Social': '#45b7d1',
+            'Social': '#f7c23e',
             'Deadline': '#9b59b6'
         };
 
@@ -792,7 +792,26 @@
                     const indicators = document.createElement('div');
                     indicators.className = 'event-indicators';
 
-                    calendarEvents[dateKey].slice(0, 3).forEach(event => {
+                    // Get unique categories (up to 4) while preserving duplicates
+                    const eventsByCategory = [];
+                    const seenCategories = new Set();
+
+                    for (const event of calendarEvents[dateKey]) {
+                        if (eventsByCategory.length >= 4) break;
+
+                        const category = event.category;
+                        if (!seenCategories.has(category)) {
+                            seenCategories.add(category);
+                        }
+
+                        // Only add if we haven't exceeded 4 unique categories
+                        if (seenCategories.size <= 4) {
+                            eventsByCategory.push(event);
+                        }
+                    }
+
+                    // Create dots for the selected events
+                    eventsByCategory.slice(0, 4).forEach(event => {
                         const dot = document.createElement('div');
                         dot.className = 'event-dot';
                         dot.style.backgroundColor = eventCategories[event.category] || '#ccc';
@@ -865,9 +884,11 @@
                     html += `
                         <div class="event-item" style="border-color: ${categoryColor};" onclick="event.stopPropagation();">
                             <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background-color: ${categoryColor}; border-radius: 8px 8px 0 0;"></div>
-                            <div class="event-category">${event.category}</div>
+                            <div class="event-header-row">
+                                <div class="event-category">${event.category}</div>
+                                ${event.time ? `<div class="event-time">${event.time}</div>` : ''}
+                            </div>
                             <div class="event-title">${event.title}</div>
-                            ${event.time ? `<div class="event-time">${event.time}</div>` : ''}
                             ${event.description ? `<div class="event-description">${event.description}</div>` : ''}
                             <div class="event-actions">
                                 <button onclick="event.stopPropagation(); editEvent('${dateKey}', ${index})">Edit</button>
@@ -988,12 +1009,28 @@
 
                 const result = await response.json();
                 if (result.status === 'success') {
+                    // Store the current date and selected date BEFORE hiding modal or loading events
+                    const savedCalendarDate = new Date(currentCalendarDate);
+                    const savedSelectedDate = selectedEventDate;
+                    
                     // Hide modal
                     hideAddEventModal();
 
+                    // Temporarily set currentCalendarDate to the saved value to prevent reset
+                    currentCalendarDate = savedCalendarDate;
+
                     // Reload calendar events to reflect the new event
                     await loadCalendarEvents();
-                    showEventDetails(selectedEventDate);
+
+                    // Re-select the date that was modified and show updated details
+                    const dayCell = document.querySelector(`[data-date="${savedSelectedDate}"]`);
+                    if (dayCell) {
+                        dayCell.classList.add('selected');
+                        selectedDateElement = dayCell;
+                    }
+                    
+                    // Show the updated event details
+                    showEventDetails(savedSelectedDate);
                 } else {
                     alert('Error creating event: ' + result.message);
                 }
@@ -1102,16 +1139,34 @@
                             title: title,
                             description: description,
                             date: editingEventDate,
-                            time: time || 'All Day'
+                            time: time || 'All Day',
+                            category: category
                         }
                     })
                 });
 
                 const result = await response.json();
                 if (result.status === 'success') {
+                    // Store the current date and editing date BEFORE hiding modal or loading events
+                    const savedCalendarDate = new Date(currentCalendarDate);
+                    const savedEditingDate = editingEventDate;
+                    
                     hideEditEventModal();
+
+                    // Temporarily set currentCalendarDate to the saved value to prevent reset
+                    currentCalendarDate = savedCalendarDate;
+
                     await loadCalendarEvents();
-                    showEventDetails(editingEventDate);
+
+                    // Re-select the date that was modified and show updated details
+                    const dayCell = document.querySelector(`[data-date="${savedEditingDate}"]`);
+                    if (dayCell) {
+                        dayCell.classList.add('selected');
+                        selectedDateElement = dayCell;
+                    }
+                    
+                    // Show the updated event details
+                    showEventDetails(savedEditingDate);
                 } else {
                     alert('Error updating event: ' + result.message);
                 }
@@ -1167,9 +1222,26 @@
 
                 const result = await response.json();
                 if (result.status === 'success') {
+                    // Store the current date and deleting date BEFORE hiding modal or loading events
+                    const savedCalendarDate = new Date(currentCalendarDate);
+                    const savedDeletingDate = deletingEventDate;
+                    
                     hideDeleteEventModal();
+
+                    // Temporarily set currentCalendarDate to the saved value to prevent reset
+                    currentCalendarDate = savedCalendarDate;
+
                     await loadCalendarEvents();
-                    showEventDetails(deletingEventDate);
+
+                    // Re-select the date that was modified and show updated details
+                    const dayCell = document.querySelector(`[data-date="${savedDeletingDate}"]`);
+                    if (dayCell) {
+                        dayCell.classList.add('selected');
+                        selectedDateElement = dayCell;
+                    }
+                    
+                    // Show the updated event details
+                    showEventDetails(savedDeletingDate);
                 } else {
                     alert('Error deleting event: ' + result.message);
                 }
