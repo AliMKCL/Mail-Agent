@@ -19,6 +19,7 @@ from backend.data_utils.data_recorder import record_slm_response
 from backend.databases.database import DatabaseManager
 from pprint import pprint
 from backend.services.setup_calendar import get_calendar_service, authenticate_google_calendar
+from backend.services.moodle_calendar import get_moodle_events_for_api
 from backend.databases.vector_database import embed_and_store, query_vector_db
 from backend.services.gmail_read import get_service, list_message_ids, prepare_email_data
 from datetime import datetime, timedelta
@@ -795,6 +796,29 @@ async def check_calendar_status():
             "message": f"Exception: {str(e)}",
             "user_id": USER_ID_FOR_CALENDAR
         }
+
+# This endpoint is called to fetch Moodle calendar events from the subscribed calendar.
+@app.get("/api/calendar/moodle")
+async def get_moodle_calendar_events(user_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    """
+    Get events from the subscribed Moodle calendar.
+    Returns events grouped by date, marked with category 'Moodle'.
+    """
+    try:
+        if user_id is None:
+            user_id = USER_ID_FOR_CALENDAR
+
+        result = get_moodle_events_for_api(user_id, start_date, end_date)
+
+        if "error" in result and result.get("events") == {}:
+            raise HTTPException(status_code=500, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching Moodle events: {str(e)}")
 
 # This endpoint is called when the user types in the search bar and submits a query.
 @app.get("/api/query")

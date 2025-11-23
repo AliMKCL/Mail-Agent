@@ -166,6 +166,10 @@
                             <div class="legend-dot" style="background-color: #9b59b6;"></div>
                             <span>Deadline</span>
                         </div>
+                        <div class="legend-item">
+                            <div class="legend-dot" style="background-color: #8B0000;"></div>
+                            <span>Moodle</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -211,7 +215,8 @@
             'Academic': '#ff6b6b',
             'Career': '#4ecdc4',
             'Social': '#f7c23e',
-            'Deadline': '#9b59b6'
+            'Deadline': '#9b59b6',
+            'Moodle': '#8B0000'  // Dark red for Moodle events
         };
 
         // Format date for display
@@ -1381,27 +1386,52 @@
                 deleteBtn.disabled = false;
                 deleteBtn.textContent = 'Delete Event';
             }
-        }        // Load calendar events from API
+        }        // Load calendar events from API (includes both regular and Moodle events)
         async function loadCalendarEvents() {
             if (!currentUserId) return;
 
             try {
-                const response = await fetch(`/api/calendar/events?user_id=${currentUserId}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                // Fetch both regular calendar events and Moodle events in parallel
+                const [regularResponse, moodleResponse] = await Promise.all([
+                    fetch(`/api/calendar/events?user_id=${currentUserId}`),
+                    fetch(`/api/calendar/moodle?user_id=${currentUserId}`)
+                ]);
+
+                // Process regular calendar events
+                let regularEvents = {};
+                if (regularResponse.ok) {
+                    const regularResult = await regularResponse.json();
+                    if (regularResult.status === 'success') {
+                        regularEvents = regularResult.events || {};
+                    } else if (regularResult.status === 'auth_required') {
+                        handleAuthRequired(regularResult.auth_url);
+                        return;
+                    }
                 }
 
-                const result = await response.json();
-                if (result.status === 'success') {
-                    calendarEvents = result.events || {};
-                    renderCalendar();
-                } else if (result.status === 'auth_required') {
-                    // Handle authentication required
-                    handleAuthRequired(result.auth_url);
-                } else {
-                    console.error('Calendar API error:', result.message);
-                    initializeSampleEvents();
+                // Process Moodle events
+                let moodleEvents = {};
+                if (moodleResponse.ok) {
+                    const moodleResult = await moodleResponse.json();
+                    if (moodleResult.status === 'success') {
+                        moodleEvents = moodleResult.events || {};
+                        console.log(`Loaded ${moodleResult.count || 0} Moodle events`);
+                    }
                 }
+
+                // Merge events: combine regular and Moodle events by date
+                calendarEvents = { ...regularEvents };
+                for (const [date, events] of Object.entries(moodleEvents)) {
+                    if (calendarEvents[date]) {
+                        // Append Moodle events to existing date
+                        calendarEvents[date] = [...calendarEvents[date], ...events];
+                    } else {
+                        // Create new date entry with Moodle events
+                        calendarEvents[date] = events;
+                    }
+                }
+
+                renderCalendar();
             } catch (error) {
                 console.error('Error loading calendar events:', error);
                 // Initialize with sample events as fallback
@@ -1450,10 +1480,33 @@
             }
         }
 
+        // Schedule calendar refresh at midnight (when day changes)
+        function scheduleMidnightRefresh() {
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 1, 0); // 1 second after midnight
+
+            const msUntilMidnight = tomorrow - now;
+
+            setTimeout(() => {
+                // Day has changed - refresh calendar events (includes Moodle)
+                if (currentUserId) {
+                    loadCalendarEvents();
+                } else {
+                    renderCalendar(); // Just re-render to update "today" highlighting
+                }
+
+                // Schedule the next midnight refresh
+                scheduleMidnightRefresh();
+            }, msUntilMidnight);
+        }
+
         // Load users and emails when page loads
         document.addEventListener('DOMContentLoaded', () => {
             loadUsers();
             initializeCalendar();
+            scheduleMidnightRefresh();
         });
     </script>
 
