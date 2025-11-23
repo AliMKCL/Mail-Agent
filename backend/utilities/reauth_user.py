@@ -8,13 +8,23 @@ Gmail and Calendar API tokens are expired, revoked, or invalid.
 from __future__ import annotations
 
 import sys
+import os
 from typing import Optional
+
+# Add project root to path so imports work when running as script
+if __name__ == "__main__":
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, project_root)
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-from backend.databases.database import DatabaseManager
+try:
+    from ..databases.database import DatabaseManager
+except ImportError:
+    # Fallback for when running as a script
+    from backend.databases.database import DatabaseManager
 
 # Scopes for Gmail and Calendar access
 SCOPES = [

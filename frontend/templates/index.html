@@ -469,13 +469,142 @@
             }
         }
 
-        // Select email (placeholder for future functionality)
+        // Select email and show detailed view
         function selectEmail(emailId) {
-            console.log('Selected email:', emailId);
+            const email = emails.find(e => e.id === emailId);
+            if (!email) return;
+
+            const messagesContent = document.getElementById('messagesContent');
+
+            // Format the date nicely
+            const emailDate = new Date(email.date_sent);
+            const formattedDate = emailDate.toLocaleString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            // Helper function to compress excessive spacing in HTML
+            function compressHtmlSpacing(html) {
+                return html
+                    // Remove multiple consecutive <br> tags (keep max 2)
+                    .replace(/(<br\s*\/?>[\s\n]*){3,}/gi, '<br><br>')
+                    // Remove multiple empty paragraphs (keep max 1)
+                    .replace(/(<p[^>]*>\s*<\/p>[\s\n]*){2,}/gi, '<p></p>')
+                    // Remove excessive whitespace between block elements
+                    .replace(/(<\/(div|p|blockquote|table)>)[\s\n]{3,}(<(div|p|blockquote|table))/gi, '$1\n\n$3')
+                    // Remove trailing/leading excessive whitespace
+                    .trim();
+            }
+
+            // Determine if we should render as HTML or plain text
+            let emailBodyHtml = '';
+
+            if (email.body_html && email.body_html !== email.body_text) {
+                // We have a separate HTML version - compress spacing and use it
+                emailBodyHtml = compressHtmlSpacing(email.body_html);
+            } else if (email.body_text) {
+                // Check if body_text contains HTML tags
+                const hasHtmlTags = /<[a-z][\s\S]*>/i.test(email.body_text);
+
+                if (hasHtmlTags) {
+                    // body_text contains HTML - compress spacing and render it as HTML
+                    emailBodyHtml = compressHtmlSpacing(email.body_text);
+                } else {
+                    // body_text is plain text - compress multiple newlines to max 2
+                    const compressedText = email.body_text.replace(/\n{3,}/g, '\n\n');
+
+                    // Escape HTML and convert newlines
+                    const escapedText = compressedText
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                    emailBodyHtml = escapedText.replace(/\n/g, '<br>');
+                }
+            } else if (email.snippet) {
+                // Fall back to snippet (escape it as plain text)
+                const escapedSnippet = email.snippet
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                emailBodyHtml = escapedSnippet;
+            } else {
+                emailBodyHtml = 'No content available';
+            }
+
+            // Create detailed view
+            const detailHtml = `
+                <div class="email-detail-view">
+                    <div class="email-detail-header">
+                        <button class="email-back-btn" onclick="closeEmailDetail()" title="Back to inbox">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="email-detail-content">
+                        <h2 class="email-detail-subject">${email.subject || 'No Subject'}</h2>
+                        <div class="email-detail-meta">
+                            <div class="email-meta-row">
+                                <span class="email-meta-label">From:</span>
+                                <span class="email-meta-value">${email.sender || 'Unknown Sender'}</span>
+                            </div>
+                            <div class="email-meta-row">
+                                <span class="email-meta-label">To:</span>
+                                <span class="email-meta-value">${email.receiver || currentUserId || 'Me'}</span>
+                            </div>
+                            <div class="email-meta-row">
+                                <span class="email-meta-label">Date:</span>
+                                <span class="email-meta-value">${formattedDate}</span>
+                            </div>
+                        </div>
+                        <div class="email-detail-body">
+                            ${emailBodyHtml}
+                        </div>
+                    </div>
+                    <div class="email-detail-actions">
+                        <button class="email-action-btn reply-btn" onclick="replyToEmail('${email.id}')">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" fill="currentColor"/>
+                            </svg>
+                            Reply
+                        </button>
+                        <button class="email-action-btn forward-btn" onclick="forwardEmail('${email.id}')">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path d="M12 8V4l8 8-8 8v-4H4V8z" fill="currentColor"/>
+                            </svg>
+                            Forward
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            messagesContent.innerHTML = detailHtml;
+        }
+
+        // Close email detail view and return to inbox
+        function closeEmailDetail() {
+            renderEmails();
+        }
+
+        // Reply to email (placeholder)
+        function replyToEmail(emailId) {
             const email = emails.find(e => e.id === emailId);
             if (email) {
-                // Could show email details in a modal or sidebar
-                console.log('Email details:', email);
+                alert(`Reply functionality coming soon!\n\nReplying to: ${email.sender}\nSubject: Re: ${email.subject}`);
+            }
+        }
+
+        // Forward email (placeholder)
+        function forwardEmail(emailId) {
+            const email = emails.find(e => e.id === emailId);
+            if (email) {
+                alert(`Forward functionality coming soon!\n\nForwarding: ${email.subject}`);
             }
         }
 
@@ -1012,7 +1141,7 @@
                     // Store the current date and selected date BEFORE hiding modal or loading events
                     const savedCalendarDate = new Date(currentCalendarDate);
                     const savedSelectedDate = selectedEventDate;
-                    
+
                     // Hide modal
                     hideAddEventModal();
 
@@ -1028,7 +1157,7 @@
                         dayCell.classList.add('selected');
                         selectedDateElement = dayCell;
                     }
-                    
+
                     // Show the updated event details
                     showEventDetails(savedSelectedDate);
                 } else {
@@ -1150,7 +1279,7 @@
                     // Store the current date and editing date BEFORE hiding modal or loading events
                     const savedCalendarDate = new Date(currentCalendarDate);
                     const savedEditingDate = editingEventDate;
-                    
+
                     hideEditEventModal();
 
                     // Temporarily set currentCalendarDate to the saved value to prevent reset
@@ -1164,7 +1293,7 @@
                         dayCell.classList.add('selected');
                         selectedDateElement = dayCell;
                     }
-                    
+
                     // Show the updated event details
                     showEventDetails(savedEditingDate);
                 } else {
@@ -1225,7 +1354,7 @@
                     // Store the current date and deleting date BEFORE hiding modal or loading events
                     const savedCalendarDate = new Date(currentCalendarDate);
                     const savedDeletingDate = deletingEventDate;
-                    
+
                     hideDeleteEventModal();
 
                     // Temporarily set currentCalendarDate to the saved value to prevent reset
@@ -1239,7 +1368,7 @@
                         dayCell.classList.add('selected');
                         selectedDateElement = dayCell;
                     }
-                    
+
                     // Show the updated event details
                     showEventDetails(savedDeletingDate);
                 } else {
