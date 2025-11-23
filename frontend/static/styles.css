@@ -1248,6 +1248,88 @@ body {
     fill: #4d94f8;
 }
 
+/* Notification Button & Badge */
+.notification-btn {
+    position: relative;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 50%;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    background-color: #ccc;
+    color: white;
+    transition: background-color 0.3s ease;
+}
+
+.notification-badge.has-new {
+    background-color: #ff4444;
+}
+
+.notification-badge.hidden {
+    display: none;
+}
+
+/* Notification Modal List */
+.notification-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.notification-item {
+    padding: 16px 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background-color: #fafafa;
+    border-radius: 6px;
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.notification-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    flex: 1;
+}
+
+.notification-title {
+    font-weight: 700;
+    font-size: 16px;
+    color: #8B0000;
+    margin-bottom: 6px;
+}
+
+.notification-meta {
+    font-size: 13px;
+    color: #666;
+}
+
+.no-notifications {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+}
+
 .icon {
     width: 32px;
     height: 32px;

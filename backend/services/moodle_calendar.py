@@ -1,6 +1,8 @@
 """
 Service to fetch events from subscribed Moodle calendar.
 
+IMPORTANT: The Moodle calendar must be subscribed to in the user's Google Calendar account.
+
 This module:
 1. Lists all calendars accessible to the user
 2. Finds the Moodle calendar by name
@@ -201,9 +203,11 @@ def get_moodle_events_for_api(user_id: int = DEFAULT_USER_ID,
 
     # Set default date range if not provided
     if not start_date:
-        start_date = datetime.now().replace(day=1).isoformat() + 'Z'
+        # Start from beginning of month (midnight)
+        start_date = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
     if not end_date:
-        next_month = datetime.now().replace(day=28) + timedelta(days=90)
+        # 90 days ahead from now
+        next_month = datetime.now().replace(hour=23, minute=59, second=59) + timedelta(days=90)
         end_date = next_month.isoformat() + 'Z'
 
     try:

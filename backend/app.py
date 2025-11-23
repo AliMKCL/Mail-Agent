@@ -459,11 +459,13 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
         
         # Set default date range if not provided (current month)
         if not start_date:
-            start_date = datetime.now().replace(day=1).isoformat() + 'Z'
+            # Start from beginning of month (midnight)
+            start_date = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
         if not end_date:
-            # Get last day of current month
+            # Get last day of current month at end of day
             next_month = datetime.now().replace(day=28) + timedelta(days=4)
-            end_date = (next_month - timedelta(days=next_month.day)).isoformat() + 'Z'
+            last_day = next_month - timedelta(days=next_month.day)
+            end_date = last_day.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
         
         # Fetch events from Google Calendar
         events_result = service.events().list(
