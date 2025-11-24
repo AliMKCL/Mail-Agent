@@ -387,7 +387,7 @@ async def get_users():
 async def get_user_info(user_id: int):
     """Get specific user information"""
     try:
-        from databases.database import User
+        from backend.databases.database import User
         with db_manager.get_session() as session:
             user = session.query(User).filter_by(id=user_id).first()
             if not user:
@@ -690,6 +690,7 @@ async def update_calendar_event(event_id: str, request_data: dict):
             "message": "Event updated successfully",
             "event_link": updated_event.get('htmlLink', '')
         }
+
         
     except HttpError as e:
         if e.resp.status == 404:

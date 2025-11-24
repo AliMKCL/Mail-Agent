@@ -23,7 +23,8 @@
                 </form>
             </div>
             <div class="top-bar-icons">
-                <button class="icon-btn notification-btn" id="notificationBtn" title="Notifications" onclick="showNotificationModal()">
+                <button class="icon-btn notification-btn" id="notificationBtn" title="Notifications"
+                    onclick="showNotificationModal()">
                     <!-- Notification Icon -->
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none"
                         stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -179,23 +180,29 @@
         <!-- Reminders Panel -->
         <div class="panel reminders-panel">
             <div class="panel-header" id="remindersHeader">
-                <svg class="reminders-icon" viewBox="0 0 24 24">
-                    <path
-                        d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10 3.17 10 4v.68C7.13 5.36 5.5 7.92 5.5 11v5l-1.7 1.7c-.14.14-.3.33-.3.53V19c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-.77c0-.2-.16-.39-.3-.53L18 16z">
-                    </path>
-                </svg>
-                Reminders
+                <div class="reminders-header-content">
+                    <svg class="reminders-icon" viewBox="0 0 24 24">
+                        <path
+                            d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10 3.17 10 4v.68C7.13 5.36 5.5 7.92 5.5 11v5l-1.7 1.7c-.14.14-.3.33-.3.53V19c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-.77c0-.2-.16-.39-.3-.53L18 16z">
+                        </path>
+                    </svg>
+                    Reminders
+                </div>
+                <select id="reminderCategoryFilter" class="reminder-filter-dropdown" onchange="updateReminders()">
+                    <option value="All">All</option>
+                    <option value="Academic">Academic</option>
+                    <option value="Career">Career</option>
+                    <option value="Social">Social</option>
+                    <option value="Deadline">Deadline</option>
+                    <option value="Moodle">Moodle</option>
+                </select>
             </div>
             <div class="panel-content" id="remindersPanel">
                 <div class="reminders-content">
+                    <!-- Day headers -->
+                    <div class="reminder-day-headers" id="reminderDayHeaders"></div>
                     <!-- Grid of reminder cells -->
-                    <div class="reminder-cell"></div>
-                    <div class="reminder-cell"></div>
-                    <div class="reminder-cell"></div>
-                    <div class="reminder-cell"></div>
-                    <div class="reminder-cell"></div>
-                    <div class="reminder-cell"></div>
-                    <div class="reminder-cell"></div>
+                    <div class="reminder-cells-grid" id="reminderCellsGrid"></div>
                 </div>
             </div>
         </div>
@@ -1054,6 +1061,93 @@
                 dayCell.onclick = () => selectDate(dayCell, dateKey);
                 grid.appendChild(dayCell);
             }
+
+            // Update reminders after rendering calendar
+            updateReminders();
+        }
+
+        // ============================================================================
+        // REMINDERS SECTION
+        // ============================================================================
+
+        function updateReminders() {
+            const headersContainer = document.getElementById('reminderDayHeaders');
+            const cellsContainer = document.getElementById('reminderCellsGrid');
+            const categoryFilter = document.getElementById('reminderCategoryFilter').value;
+
+            if (!headersContainer || !cellsContainer) return;
+
+            // Get today and next 4 days
+            const today = new Date();
+            const days = [];
+            for (let i = 0; i < 5; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                days.push(date);
+            }
+
+            // Day name abbreviations
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+            // Render day headers
+            headersContainer.innerHTML = days.map((date, index) => {
+                const isToday = index === 0;
+                const dayName = dayNames[date.getDay()];
+                const dayDate = `${date.getMonth() + 1}/${date.getDate()}`;
+                return `
+                    <div class="reminder-day-header ${isToday ? 'today' : ''}">
+                        <span class="day-name">${isToday ? 'Today' : dayName}</span>
+                        <span class="day-date">${dayDate}</span>
+                    </div>
+                `;
+            }).join('');
+
+            // Render cells with events
+            cellsContainer.innerHTML = days.map((date, index) => {
+                const isToday = index === 0;
+                const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                // Get events for this date
+                let dayEvents = calendarEvents[dateKey] || [];
+
+                // Filter by category if not "All"
+                if (categoryFilter !== 'All') {
+                    dayEvents = dayEvents.filter(e => e.category === categoryFilter);
+                }
+
+                // Build cell content
+                let cellContent = '';
+                const maxDisplay = 5;
+                const displayEvents = dayEvents.slice(0, maxDisplay);
+                const hiddenCount = dayEvents.length - maxDisplay;
+
+                if (displayEvents.length === 0) {
+                    cellContent = '<div class="reminder-empty">No events</div>';
+                } else {
+                    displayEvents.forEach(event => {
+                        const color = eventCategories[event.category] || '#ccc';
+                        const title = truncateTitle(event.title, 25);
+                        cellContent += `
+                            <div class="reminder-event">
+                                <span class="reminder-event-dot" style="background-color: ${color}"></span>
+                                <span class="reminder-event-title">${title}</span>
+                            </div>
+                        `;
+                    });
+
+                    if (hiddenCount > 0) {
+                        cellContent += `<div class="reminder-more">+${hiddenCount} more</div>`;
+                    }
+                }
+
+                return `<div class="reminder-cell ${isToday ? 'today' : ''}">${cellContent}</div>`;
+            }).join('');
+        }
+
+        function truncateTitle(title, maxLength) {
+            if (!title) return '';
+            if (title.length <= maxLength) return title;
+            return title.substring(0, maxLength - 3) + '...';
         }
 
         function changeMonth(direction) {
