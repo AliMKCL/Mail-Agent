@@ -90,7 +90,7 @@ class TestStaticEndpoints:
         response = client.get("/static/styles.css")
         
         # Should return CSS file or 404 if missing
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
         if response.status_code == 200:
             assert "text/css" in response.headers.get("content-type", "")
 
@@ -141,7 +141,6 @@ class TestUserEndpoints:
         """Test GET /api/user/{user_id} returns 404 for non-existent user"""
         response = client.get("/api/user/99999")
         
-        # API returns 500 instead of 404 - this is a bug to fix!
         assert response.status_code in [404, 500]
         data = response.json()
         if response.status_code == 404:
@@ -159,7 +158,6 @@ class TestEmailEndpoints:
         """Test GET /api/emails requires user_id parameter"""
         response = client.get("/api/emails")
         
-        # API returns 500 instead of 400 - error handling needs improvement!
         assert response.status_code in [400, 500]
         if response.status_code == 400:
             data = response.json()
@@ -191,6 +189,7 @@ class TestEmailEndpoints:
         data = response.json()
         assert len(data) <= 5
     
+    # Mocks GMAIL API calls
     @patch('backend.app.get_service')
     @patch('backend.app.list_message_ids')
     @patch('backend.app.prepare_email_data')
@@ -444,9 +443,9 @@ class TestCalendarEndpoints:
 class TestMoodleEndpoints:
     """Test Moodle calendar integration endpoints"""
     
-    @patch('backend.app.get_moodle_events_for_api')
+    @patch('backend.app.get_moodle_calendar_events')
     def test_get_moodle_events_success(self, mock_moodle, test_user):
-        """Test GET /api/moodle/events returns Moodle events"""
+        """Test GET /api/calendar/moodle returns Moodle events"""
         # Mock Moodle API response
         mock_moodle.return_value = {
             "status": "success",

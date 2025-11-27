@@ -9,6 +9,13 @@ This script will:
 """
 
 import sys
+import os
+
+# Add project root to path so imports work when running as script
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from backend.databases.database import DatabaseManager
 from backend.services.gmail_read import get_service
 

@@ -9,8 +9,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from backend.databases.database import DatabaseManager
-from backend.utilities.reauth_user import reauthenticate_user_token_failure
+from ..databases.database import DatabaseManager
+from ..utilities.reauth_user import reauthenticate_user_token_failure
 
 # Scopes needed for Gmail and Calendar access
 SCOPES = [

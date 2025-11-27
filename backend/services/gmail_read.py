@@ -27,9 +27,9 @@ from google.auth.transport.requests import Request  # helper for making HTTP req
 from googleapiclient.discovery import build  # constructs API client objects (Gmail API client)
 
 # Local database imports
-from backend.databases.database import DatabaseManager, User  # database models and utilities
+from ..databases.database import DatabaseManager, User  # database models and utilities
 
-from backend.utilities.reauth_user import reauthenticate_user_token_failure
+from ..utilities.reauth_user import reauthenticate_user_token_failure
 
 # Ask for Gmail and Calendar permissions
 SCOPES = [
