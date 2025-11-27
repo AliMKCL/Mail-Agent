@@ -30,6 +30,7 @@ from fastmcp import FastMCP
 from backend.databases.database import DatabaseManager, User, Email
 from backend.services.gmail_read import get_service, list_message_ids, prepare_email_data
 from backend.services.setup_calendar import get_calendar_service
+from backend.services.moodle_calendar import get_moodle_events_for_api
 from backend.databases.vector_database import query_vector_db, embed_and_store
 from backend.utilities.ask_ollama import slm_response, llm_response
 from backend.utilities.clean_mails import clean_email
@@ -539,7 +540,8 @@ async def delete_calendar_event(event_id: str) -> dict:
 @mcp.tool()
 async def get_calendar_events(start_date: Optional[str] = None, end_date: Optional[str] = None) -> dict:
     """
-    Get calendar events for a date range. Always uses the main calendar account (user ID 1).
+    Get calendar events for a date range from ALL calendars (primary + Moodle).
+    Always uses the main calendar account (user ID 1).
     If no dates provided, returns events for the current month.
 
     Args:
@@ -547,7 +549,7 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
         end_date: End date in YYYY-MM-DD format (optional, defaults to end of current month)
 
     Returns:
-        List of events in the specified date range
+        List of events in the specified date range from all calendars
     """
     try:
         # Get calendar service (always uses CALENDAR_USER_ID)
@@ -557,40 +559,45 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
 
         # Set default date range to current month if not provided
         if not start_date:
-            start_date = datetime.now().replace(day=1, hour=0, minute=0, second=0).isoformat() + 'Z'
+            start_date_str = datetime.now().replace(day=1, hour=0, minute=0, second=0).isoformat() + 'Z'
+            start_date_plain = datetime.now().replace(day=1, hour=0, minute=0, second=0).strftime('%Y-%m-%d')
         else:
-            start_date = datetime.fromisoformat(start_date).isoformat() + 'Z'
+            start_date_str = datetime.fromisoformat(start_date).isoformat() + 'Z'
+            start_date_plain = start_date
 
         if not end_date:
             next_month = datetime.now().replace(day=28) + timedelta(days=4)
             last_day = next_month - timedelta(days=next_month.day)
-            end_date = last_day.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
+            end_date_str = last_day.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
+            end_date_plain = last_day.strftime('%Y-%m-%d')
         else:
-            end_date = datetime.fromisoformat(end_date).isoformat() + 'Z'
+            end_date_str = datetime.fromisoformat(end_date).isoformat() + 'Z'
+            end_date_plain = end_date
 
-        logger.info(f"Getting calendar events from {start_date} to {end_date}")
+        logger.info(f"Getting calendar events from {start_date_str} to {end_date_str}")
 
-        # Fetch events
+        # Fetch events from primary calendar
         events_result = service.events().list(
             calendarId='primary',
-            timeMin=start_date,
-            timeMax=end_date,
+            timeMin=start_date_str,
+            timeMax=end_date_str,
             singleEvents=True,
             orderBy='startTime'
         ).execute()
 
-        events = events_result.get('items', [])
+        primary_events = events_result.get('items', [])
 
-        # Format events
+        # Format primary calendar events
         formatted_events = []
-        for event in events:
+        for event in primary_events:
             formatted_event = {
                 "id": event['id'],
                 "title": event.get('summary', 'No Title'),
                 "start": event['start'].get('dateTime', event['start'].get('date')),
                 "end": event['end'].get('dateTime', event['end'].get('date')),
                 "description": event.get('description', ''),
-                "link": event.get('htmlLink')
+                "link": event.get('htmlLink'),
+                "source": "primary"
             }
 
             # Add category if exists
@@ -599,10 +606,45 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
 
             formatted_events.append(formatted_event)
 
+        # Fetch Moodle events and merge them
+        try:
+            # Pass the ISO formatted dates with 'Z' suffix (same format as primary calendar)
+            moodle_result = get_moodle_events_for_api(
+                user_id=CALENDAR_USER_ID,
+                start_date=start_date_str,  # Use the 'Z' formatted version
+                end_date=end_date_str       # Use the 'Z' formatted version
+            )
+
+            # Extract Moodle events from the grouped format
+            if 'events' in moodle_result and isinstance(moodle_result['events'], dict):
+                moodle_count = 0
+                for date_key, events_on_date in moodle_result['events'].items():
+                    for event in events_on_date:
+                        formatted_events.append({
+                            "id": event.get('id', 'moodle-' + str(event.get('title', ''))),
+                            "title": event.get('title', 'No Title'),
+                            "start": event.get('start', ''),
+                            "end": event.get('end', ''),
+                            "description": event.get('description', ''),
+                            "link": event.get('link', ''),
+                            "category": "Moodle",
+                            "source": "moodle"
+                        })
+                        moodle_count += 1
+                logger.info(f"Added {moodle_count} Moodle events")
+        except Exception as moodle_error:
+            logger.warning(f"Could not fetch Moodle events: {moodle_error}")
+            # Continue without Moodle events - don't fail the entire request
+
+        # Sort all events by start time
+        formatted_events.sort(key=lambda e: e['start'])
+
         return {
             "status": "success",
             "events": formatted_events,
-            "count": len(formatted_events)
+            "count": len(formatted_events),
+            "primary_count": len(primary_events),
+            "sources": ["primary", "moodle"]
         }
     except Exception as e:
         logger.error(f"Error getting calendar events: {e}")
@@ -861,56 +903,24 @@ async def get_email_resource(message_id: str) -> str:
 @mcp.resource("calendar://events")
 async def get_calendar_events_resource() -> str:
     """
-    Resource: Get calendar events for the current month.
+    Resource: Get calendar events for the current month from ALL calendars (primary + Moodle).
 
     URI: calendar://events
 
-    Returns JSON string with list of events from the main calendar (user ID 1).
+    Returns JSON string with list of events from all calendars (user ID 1).
     """
     try:
-        # Get calendar service (always uses CALENDAR_USER_ID)
-        service, error = get_calendar_service(CALENDAR_USER_ID)
-        if not service:
-            return json.dumps({"error": error})
+        # Use the tool to get all events (which already merges primary + Moodle)
+        result = await get_calendar_events()
 
-        # Get current month date range
-        start_date = datetime.now().replace(day=1, hour=0, minute=0, second=0).isoformat() + 'Z'
-        next_month = datetime.now().replace(day=28) + timedelta(days=4)
-        last_day = next_month - timedelta(days=next_month.day)
-        end_date = last_day.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
-
-        # Fetch events
-        events_result = service.events().list(
-            calendarId='primary',
-            timeMin=start_date,
-            timeMax=end_date,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-
-        events = events_result.get('items', [])
-
-        # Format events
-        formatted_events = []
-        for event in events:
-            formatted_event = {
-                "id": event['id'],
-                "title": event.get('summary', 'No Title'),
-                "start": event['start'].get('dateTime', event['start'].get('date')),
-                "end": event['end'].get('dateTime', event['end'].get('date')),
-                "description": event.get('description', ''),
-                "link": event.get('htmlLink')
-            }
-
-            # Add category if exists
-            if 'extendedProperties' in event and 'private' in event['extendedProperties']:
-                formatted_event['category'] = event['extendedProperties']['private'].get('category')
-
-            formatted_events.append(formatted_event)
+        if result.get("status") == "error":
+            return json.dumps({"error": result.get("error")})
 
         return json.dumps({
-            "events": formatted_events,
-            "count": len(formatted_events),
+            "events": result.get("events", []),
+            "count": result.get("count", 0),
+            "primary_count": result.get("primary_count", 0),
+            "sources": result.get("sources", []),
             "month": datetime.now().strftime("%B %Y")
         }, indent=2)
     except Exception as e:

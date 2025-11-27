@@ -832,6 +832,11 @@
                 return;
             }
 
+            if (!currentUserId) {
+                showAIResponseModal(query, 'Please select a user account first.', []);
+                return;
+            }
+
             try {
                 // Show loading state
                 const searchIcon = document.querySelector('.top-search-icon');
@@ -840,18 +845,33 @@
                 }
 
                 // Show loading modal
-                showAIResponseModal(query, 'Loading...', []);
+                showAIResponseModal(query, 'Processing your request...', []);
 
-                // Query the vector database API
-                const response = await fetch(`/api/query?query=${encodeURIComponent(query)}&top_k=5`);
+                // Call the new LLM query endpoint with MCP tool access
+                const response = await fetch('/api/llm-query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        user_id: currentUserId,
+                        use_openai: true  // Use OpenAI for function calling
+                    })
+                });
+
                 const data = await response.json();
 
                 if (data.status === 'success') {
-                    // Display AI response in modal
-                    showAIResponseModal(query, data.answer, data.sources || []);
-                    console.log(`AI responded to query: "${query}"`);
+                    // Display AI response with actions taken
+                    const actionsHtml = data.actions && data.actions.length > 0
+                        ? formatActionsHtml(data.actions)
+                        : '';
+
+                    showAIResponseModal(query, data.answer, [], actionsHtml);
+                    console.log(`AI responded to query: "${query}"`, data.actions);
                 } else {
-                    showAIResponseModal(query, 'Error: Unable to get a response. Please try again.', []);
+                    showAIResponseModal(query, 'Error: ' + (data.error || 'Unable to get a response. Please try again.'), []);
                 }
             } catch (error) {
                 console.error('Error performing AI search:', error);
@@ -865,8 +885,49 @@
             }
         }
 
+        // Format actions taken by the LLM into HTML
+        function formatActionsHtml(actions) {
+            if (!actions || actions.length === 0) return '';
+
+            let html = '<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
+            html += '<h3 style="margin-top: 0; font-size: 14px; color: #5f6368;">Actions Taken:</h3>';
+            html += '<ul style="margin: 0; padding-left: 20px;">';
+
+            for (const action of actions) {
+                const toolName = action.tool || 'Unknown';
+                const result = action.result || {};
+
+                let actionDesc = '';
+                if (result.status === 'success') {
+                    switch (toolName) {
+                        case 'create_calendar_event':
+                            actionDesc = `✅ Created calendar event: "${action.arguments.title}"`;
+                            break;
+                        case 'search_emails':
+                            actionDesc = `🔍 Searched emails (found ${result.count || 0} results)`;
+                            break;
+                        case 'sync_emails':
+                            actionDesc = `📧 Synced ${result.new_emails || 0} new emails`;
+                            break;
+                        case 'extract_dates_from_emails':
+                            actionDesc = `📅 Extracted ${result.count || 0} deadlines`;
+                            break;
+                        default:
+                            actionDesc = `✓ Executed: ${toolName}`;
+                    }
+                } else {
+                    actionDesc = `❌ ${toolName} failed: ${result.error || 'Unknown error'}`;
+                }
+
+                html += `<li style="margin: 5px 0;">${actionDesc}</li>`;
+            }
+
+            html += '</ul></div>';
+            return html;
+        }
+
         // Display AI response in a modal
-        function showAIResponseModal(query, answer, sources) {
+        function showAIResponseModal(query, answer, sources, actionsHtml = '') {
             // Create modal if it doesn't exist
             let modal = document.getElementById('aiResponseModal');
             if (!modal) {
@@ -903,6 +964,11 @@
                     </div>
                 </div>
             `;
+
+            // Add actions section if provided
+            if (actionsHtml) {
+                content += actionsHtml;
+            }
 
             if (sources && sources.length > 0) {
                 content += `

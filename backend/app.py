@@ -131,7 +131,7 @@ async def sync_emails(user_id: Optional[int] = None):
         latest_date = db_manager.get_latest_email_date(user_id)
         
 
-        flag = False
+        flag = True
         # Build Gmail search query to fetch only newer emails
         query = ""
         if latest_date:
@@ -145,8 +145,8 @@ async def sync_emails(user_id: Optional[int] = None):
                 else:
                     query = f"newer_than:{int(hours_since)}h"
             else:
-                #query = f"newer_than:{days_since}d"
-                query = f"newer_than:{10}d"
+                query = f"newer_than:{days_since}d"
+                #query = f"newer_than:{10}d"
             
             print(f"DEBUG: Latest email date: {latest_date}")
             print(f"DEBUG: Days since latest: {days_since}")
@@ -302,7 +302,7 @@ async def sync_emails(user_id: Optional[int] = None):
                 for cleaned_email in batch:
                     body_snip = cleaned_email['cleaned_body'].strip()
                     prompt_parts.append(f"| {body_snip} |")
-                    print(body_snip)
+                    #print(body_snip)
                 
                 prompt = "\n\n".join(prompt_parts)
                 # Commented out slm response for testing as this took too long.
@@ -920,6 +920,49 @@ async def query_vector_database(query: str, top_k: int = 3):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error querying vector database: {str(e)}")
+
+
+@app.post("/api/llm-query")
+async def llm_query_endpoint(request_data: dict):
+    """
+    Process natural language queries using LLM with access to MCP tools.
+    The LLM can search emails, create calendar events, extract deadlines, and more.
+
+    Request body:
+    {
+        "query": "Find deadlines in my emails and add them to calendar",
+        "user_id": 1,
+        "use_openai": true  // optional, defaults to true
+    }
+    """
+    try:
+        from backend.llm_integration import process_llm_query
+
+        query = request_data.get("query")
+        user_id = request_data.get("user_id")
+        use_openai = request_data.get("use_openai", True)
+
+        if not query:
+            raise HTTPException(status_code=400, detail="query parameter is required")
+
+        # Process the query through LLM with tool access
+        result = await process_llm_query(query, user_id=user_id, use_openai=use_openai)
+
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result.get("error"))
+
+        return {
+            "status": "success",
+            "answer": result.get("answer"),
+            "actions": result.get("actions", []),
+            "note": result.get("note")
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing LLM query: {str(e)}")
+
 
 # Run the FastAPI application
 if __name__ == "__main__":
