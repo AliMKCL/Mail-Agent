@@ -7,7 +7,7 @@ Exposes email and calendar functions as MCP tools for LLM integration
 
 """
 Known problems:
-- Moodle events in get_calendar_events not showing up in UI (Possibly due to original, since moodle feature was added later and uses a different table)
+- When AI replies in 2 parts (uses 2+ tools) it stops after 1st tool call and does not continue to 2nd.
 """
 
 import sys
@@ -54,6 +54,22 @@ CALENDAR_USER_ID = 1  # Calendar operations always use user ID 1 (main account)
 context = {
     "last_sync_time": None
 }
+
+
+# Helper function to save credentials after calendar operations
+def save_calendar_credentials_after_use(service, user_id):
+    """
+    Save potentially refreshed credentials after calendar service use.
+    Google's library may auto-refresh tokens during API calls.
+    """
+    try:
+        if hasattr(service, '_http') and hasattr(service._http, 'credentials'):
+            creds = service._http.credentials
+            if creds:
+                db_manager.save_user_token(user_id, creds)
+                logger.debug(f"Saved potentially refreshed credentials for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Could not save credentials after calendar operation: {e}")
 
 
 # ============================================================================
@@ -418,6 +434,9 @@ async def create_calendar_event(
         # Create the event
         created_event = service.events().insert(calendarId='primary', body=event).execute()
 
+        # Save credentials in case they were refreshed during the API call
+        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+
         logger.info(f"Event created: {created_event['id']}")
         return {
             "status": "success",
@@ -494,6 +513,9 @@ async def update_calendar_event(
         # Update the event
         updated_event = service.events().update(calendarId='primary', eventId=event_id, body=event).execute()
 
+        # Save credentials in case they were refreshed during the API call
+        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+
         logger.info(f"Event updated: {event_id}")
         return {
             "status": "success",
@@ -526,6 +548,9 @@ async def delete_calendar_event(event_id: str) -> dict:
 
         # Delete the event
         service.events().delete(calendarId='primary', eventId=event_id).execute()
+
+        # Save credentials in case they were refreshed during the API call
+        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
 
         logger.info(f"Event deleted: {event_id}")
         return {
@@ -571,7 +596,10 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
             end_date_str = last_day.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
             end_date_plain = last_day.strftime('%Y-%m-%d')
         else:
-            end_date_str = datetime.fromisoformat(end_date).isoformat() + 'Z'
+            # Add 1 day to end_date because Google Calendar API's timeMax is EXCLUSIVE
+            # So to include events ON the end_date, we need to query up to the next day
+            end_date_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+            end_date_str = end_date_dt.isoformat() + 'Z'
             end_date_plain = end_date
 
         logger.info(f"Getting calendar events from {start_date_str} to {end_date_str}")
@@ -639,6 +667,9 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
         # Sort all events by start time
         formatted_events.sort(key=lambda e: e['start'])
 
+        # Save credentials in case they were refreshed during the API call
+        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+
         return {
             "status": "success",
             "events": formatted_events,
@@ -684,10 +715,24 @@ async def extract_dates_from_emails(user_id: int, limit: int = 20, auto_create_e
                 email_text += f"Body: {email.body_text[:500]}\n"
             email_texts.append(email_text)
 
-        # Create prompt for LLM
-        prompt = f"""Extract all dates, deadlines, and time-sensitive information from these emails.
+        # Get current date context
+        now = datetime.now()
+        current_date = now.strftime("%B %d, %Y")
+        current_year = now.year
+        is_end_of_year = now.month >= 11
+
+        # Create prompt for LLM with date context
+        prompt = f"""TODAY'S DATE: {current_date}
+
+IMPORTANT: When you see dates without years in the emails:
+1. If the month hasn't passed yet this year, assume it's {current_year}
+2. If the month has already passed this year, assume it's {current_year + 1}
+{"3. Since it's near end of year, months like January, February, March likely refer to " + str(current_year + 1) if is_end_of_year else ""}
+4. For relative dates like "next week", "this Friday", calculate from today: {current_date}
+
+Extract all dates, deadlines, and time-sensitive information from these emails.
 For each date found, provide:
-- date: in YYYY-MM-DD format
+- date: in YYYY-MM-DD format (MUST include the year based on rules above)
 - description: what the deadline/event is about
 - email_subject: the subject of the email it came from
 
@@ -773,6 +818,11 @@ async def summarize_emails(query: str = "unread", user_id: Optional[int] = None,
 
         emails = search_result['results']
 
+        # Get current date context
+        now = datetime.now()
+        current_date = now.strftime("%B %d, %Y")
+        current_year = now.year
+
         # Build context for LLM
         email_context = []
         for email in emails:
@@ -784,9 +834,12 @@ async def summarize_emails(query: str = "unread", user_id: Optional[int] = None,
             )
 
         # Create prompt based on summary type
+        date_context = f"TODAY'S DATE: {current_date}\nWhen mentioning dates or deadlines in your summary, interpret relative dates based on today's date.\n\n"
+
         if summary_type == "bullet_points":
-            prompt = f"""Summarize these emails as a bullet-point list.
+            prompt = date_context + f"""Summarize these emails as a bullet-point list.
 Group by category (work, academic, personal, etc.) if applicable.
+If any deadlines are mentioned, include them with full dates (YYYY-MM-DD).
 
 Emails:
 {chr(10).join(email_context)}
@@ -794,8 +847,9 @@ Emails:
 Provide a concise bullet-point summary:
 """
         elif summary_type == "detailed":
-            prompt = f"""Provide a detailed summary of these emails.
+            prompt = date_context + f"""Provide a detailed summary of these emails.
 Include key information, action items, and any deadlines mentioned.
+For deadlines without years, infer the year based on today's date ({current_date}).
 
 Emails:
 {chr(10).join(email_context)}
@@ -803,8 +857,8 @@ Emails:
 Detailed summary:
 """
         else:  # brief
-            prompt = f"""Provide a brief summary of these emails in 2-3 sentences.
-Focus on the most important information.
+            prompt = date_context + f"""Provide a brief summary of these emails in 2-3 sentences.
+Focus on the most important information, especially any upcoming deadlines.
 
 Emails:
 {chr(10).join(email_context)}

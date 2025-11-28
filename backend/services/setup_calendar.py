@@ -106,8 +106,16 @@ def get_calendar_service(user_id=None):
         
         # Build calendar service
         service = build('calendar', 'v3', credentials=creds)
+
+        # Save credentials after building service in case they were auto-refreshed
+        # Google's library may refresh tokens when building the service
+        try:
+            db_manager.save_user_token(user_id, creds)
+        except Exception as save_error:
+            print(f"⚠️  Warning: Could not save potentially refreshed credentials: {save_error}")
+
         return service, None
-        
+
     except Exception as e:
         print(f"Error getting calendar service: {e}")
         return None, str(e)

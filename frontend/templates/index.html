@@ -13,13 +13,13 @@
         <div class="top-bar-inner">
             <div class="top-search-wrapper">
                 <form id="topSearchForm" onsubmit="onTopSearchSubmit(event)" class="top-search-form">
-                    <svg class="top-search-icon" viewBox="0 0 24 24">
-                        <path
-                            d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99c.41.41 1.09.41 1.5 0s.41-1.09 0-1.5l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z">
-                        </path>
+                    <!-- AI Sparkle Icon -->
+                    <svg class="top-search-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2L9.5 9.5L2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/>
+                        <circle cx="12" cy="12" r="2" fill="currentColor" opacity="0.8"/>
                     </svg>
-                    <input id="AISearchInput" type="search" placeholder="Ask AI about your inbox and plans..."
-                        aria-label="Ask AI" class="top-search-input" />
+                    <input id="AISearchInput" type="search" placeholder="Ask AI Assistant anything..."
+                        aria-label="Ask AI Assistant" class="top-search-input" />
                 </form>
             </div>
             <div class="top-bar-icons">
@@ -870,6 +870,29 @@
 
                     showAIResponseModal(query, data.answer, [], actionsHtml);
                     console.log(`AI responded to query: "${query}"`, data.actions);
+
+                    // Check if any calendar-modifying actions were taken
+                    const calendarActions = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'];
+                    const hasCalendarAction = data.actions && data.actions.some(action =>
+                        calendarActions.includes(action.tool) && action.result.status === 'success'
+                    );
+
+                    // Reload calendar if it was modified
+                    if (hasCalendarAction) {
+                        console.log('Calendar was modified, reloading calendar view...');
+                        loadCalendarEvents();
+                    }
+
+                    // Check if emails were synced
+                    const hasSyncAction = data.actions && data.actions.some(action =>
+                        action.tool === 'sync_emails' && action.result.status === 'success'
+                    );
+
+                    // Reload emails if they were synced
+                    if (hasSyncAction) {
+                        console.log('Emails were synced, reloading email list...');
+                        loadEmails();
+                    }
                 } else {
                     showAIResponseModal(query, 'Error: ' + (data.error || 'Unable to get a response. Please try again.'), []);
                 }

@@ -141,12 +141,12 @@ TOOLS_MANIFEST = [
         "type": "function",
         "function": {
             "name": "create_calendar_event",
-            "description": "Create a new calendar event. Always uses the main calendar (user ID 1).",
+            "description": "Create a new calendar event. Always uses the main calendar (user ID 1). IMPORTANT: Always provide the date in YYYY-MM-DD format with the full year. Use the current date context provided in the system message to infer the correct year.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Event title"},
-                    "date": {"type": "string", "description": "Event date in YYYY-MM-DD format"},
+                    "date": {"type": "string", "description": "Event date in YYYY-MM-DD format. MUST include the full year (e.g., 2025-12-05, not 12-05). Use date context to infer the year if not specified by user."},
                     "time": {"type": "string", "description": "Event time in HH:MM AM/PM format or 'All Day'", "default": "All Day"},
                     "description": {"type": "string", "description": "Event description", "default": ""},
                     "category": {"type": "string", "enum": ["Academic", "Career", "Social", "Deadline"], "description": "Event category"}
@@ -159,13 +159,13 @@ TOOLS_MANIFEST = [
         "type": "function",
         "function": {
             "name": "update_calendar_event",
-            "description": "Update an existing calendar event",
+            "description": "Update an existing calendar event. When updating the date, always use YYYY-MM-DD format with the full year.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "event_id": {"type": "string", "description": "Calendar event ID"},
                     "title": {"type": "string", "description": "New title"},
-                    "date": {"type": "string", "description": "New date in YYYY-MM-DD format"},
+                    "date": {"type": "string", "description": "New date in YYYY-MM-DD format. MUST include the full year (e.g., 2025-12-05)."},
                     "time": {"type": "string", "description": "New time"},
                     "description": {"type": "string", "description": "New description"},
                     "category": {"type": "string", "description": "New category"}
@@ -238,13 +238,14 @@ TOOLS_MANIFEST = [
 ]
 
 
-async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_tool(tool_name: str, arguments: Dict[str, Any], context_user_id: int = None) -> Dict[str, Any]:
     """
     Execute an MCP tool by name with given arguments
 
     Args:
         tool_name: Name of the tool to execute
         arguments: Dictionary of arguments to pass to the tool
+        context_user_id: The user ID from the query context (for credential access)
 
     Returns:
         Result from the tool execution
@@ -256,7 +257,15 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, A
         tool_obj = TOOL_REGISTRY[tool_name]
         # Extract the actual function from FunctionTool wrapper
         tool_func = tool_obj.fn if hasattr(tool_obj, 'fn') else tool_obj
-        
+
+        # If the tool doesn't have a user_id argument but we have a context user_id,
+        # and it's a calendar tool, inject it
+        calendar_tools = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event', 'get_calendar_events']
+        if tool_name in calendar_tools and context_user_id is not None and 'user_id' not in arguments:
+            # For calendar tools, they use a hardcoded CALENDAR_USER_ID
+            # We'll ensure the database has credentials for this user
+            logger.info(f"Calendar tool {tool_name} will use CALENDAR_USER_ID from mcp_server (user_id={context_user_id} provided in context)")
+
         logger.info(f"Executing tool: {tool_name} with args: {arguments}")
         result = await tool_func(**arguments)
         logger.info(f"Tool {tool_name} completed successfully")
@@ -296,18 +305,40 @@ async def process_with_openai(query: str, user_id: Optional[int] = None) -> Dict
 
         client = AsyncOpenAI(api_key=api_key)
 
+        # Get current date information for context
+        from datetime import datetime
+        now = datetime.now()
+        current_date = now.strftime("%B %d, %Y")  # e.g., "November 28, 2025"
+        current_month = now.strftime("%B")
+        current_year = now.year
+        is_end_of_year = now.month >= 11  # November or December
+
         # Build conversation messages
         messages = [
             {
                 "role": "system",
                 "content": f"""You are an AI assistant helping manage emails and calendar events.
 You have access to tools for searching emails, creating calendar events, and more.
+
+TODAY'S DATE: {current_date}
+Current month: {current_month}
+Current year: {current_year}
+{"Note: It's near the end of the year. If the user mentions early months (Jan-March) without a year, they likely mean next year (" + str(current_year + 1) + ")." if is_end_of_year else ""}
+
+IMPORTANT DATE HANDLING RULES:
+1. When the user mentions a date without a year (e.g., "tomorrow", "next Friday", "December 5"), assume the current year ({current_year})
+2. If it's currently {current_month} and they mention a past month (e.g., "January", "February"), assume they mean next year ({current_year + 1})
+3. For events like "tomorrow", "next week", calculate from today's date: {current_date}
+4. Always use YYYY-MM-DD format when calling calendar tools
+5. When inferring dates, be explicit: "I interpreted 'tomorrow' as {(now + __import__('datetime').timedelta(days=1)).strftime('%Y-%m-%d')}"
+
 {"Current user ID: " + str(user_id) if user_id else "No user context provided."}
 
 When the user asks you to perform actions:
 1. Use the appropriate tools
 2. Provide clear feedback about what you did
 3. Be concise but informative
+4. When creating calendar events, always specify the full date in YYYY-MM-DD format
 """
             },
             {"role": "user", "content": query}
@@ -338,8 +369,8 @@ When the user asks you to perform actions:
 
                 logger.info(f"LLM requested tool: {function_name} with args: {function_args}")
 
-                # Execute the tool
-                result = await execute_tool(function_name, function_args)
+                # Execute the tool with user context
+                result = await execute_tool(function_name, function_args, context_user_id=user_id)
 
                 # Add to actions log
                 actions_taken.append({
