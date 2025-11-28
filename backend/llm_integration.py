@@ -344,23 +344,35 @@ When the user asks you to perform actions:
             {"role": "user", "content": query}
         ]
 
-        # First LLM call - decide which tools to use
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            tools=TOOLS_MANIFEST,
-            tool_choice="auto"
-        )
-
-        response_message = response.choices[0].message
-        tool_calls = response_message.tool_calls
-
         # Track actions taken
         actions_taken = []
 
-        # If LLM wants to use tools, execute them
-        if tool_calls:
+        # Iterative tool calling loop - continue until LLM stops requesting tools
+        max_iterations = 5  # Safety limit to prevent infinite loops
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.info(f"LLM iteration {iteration}/{max_iterations}")
+
+            # Call LLM with tools available
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                tools=TOOLS_MANIFEST,
+                tool_choice="auto"
+            )
+
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
+
+            # Add assistant's response to conversation
             messages.append(response_message)
+
+            # If no tool calls, we're done - LLM has final answer
+            if not tool_calls:
+                answer = response_message.content
+                break
 
             # Execute each tool call
             for tool_call in tool_calls:
@@ -387,16 +399,11 @@ When the user asks you to perform actions:
                     "content": json.dumps(result)
                 })
 
-            # Second LLM call - generate final answer with tool results
-            final_response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages
-            )
-
-            answer = final_response.choices[0].message.content
+            # Continue loop - LLM will see tool results and decide next action
         else:
-            # No tools needed, just use the response
-            answer = response_message.content
+            # Hit max iterations
+            logger.warning(f"Hit max iterations ({max_iterations}) in tool calling loop")
+            answer = "I've completed multiple steps but reached the iteration limit. The actions taken are listed below."
 
         return {
             "status": "success",

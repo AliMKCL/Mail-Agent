@@ -7,7 +7,6 @@ Exposes email and calendar functions as MCP tools for LLM integration
 
 """
 Known problems:
-- When AI replies in 2 parts (uses 2+ tools) it stops after 1st tool call and does not continue to 2nd.
 """
 
 import sys
