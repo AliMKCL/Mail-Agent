@@ -14,6 +14,8 @@ This is a full-stack application with a FastAPI backend, SQLite database, Chroma
 Mail_agent/
 ├── backend/
 │   ├── app.py                          # Main FastAPI application with all REST API endpoints
+│   ├── mcp_server.py                   # MCP Server exposing all tools, resources, and prompts for LLM 
+│   ├── llm_integration.py              # LLM integration layer with tool execution and OpenAI/Ollama support
 │   ├── databases/
 │   │   ├── database.py                 # SQLAlchemy ORM models (User, Email, UserToken) + DatabaseManager
 │   │   └── vector_database.py          # ChromaDB integration for email embeddings and semantic search
@@ -30,6 +32,8 @@ Mail_agent/
 │   └── data_utils/
 │       ├── data_recorder.py            # Data recording helpers
 │       └── data.json                   # Sample data storage
+├── tests/
+│   └── test_mcp_tools.py               # Comprehensive integration tests for all MCP tools
 ├── frontend/
 │   ├── templates/
 │   │   └── index.html                  # Main SPA with all HTML, CSS, and JavaScript

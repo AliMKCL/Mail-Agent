@@ -31,6 +31,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+import requests
 
 # Initialize FastAPI app
 app = FastAPI(title="Gmail Agent", description="Web interface for Gmail email management")
@@ -119,6 +120,8 @@ async def sync_emails(user_id: Optional[int] = None):
     Trigger email synchronization from Gmail
     This endpoint can be called to fetch new emails
     """
+
+    # 50 Mails took 70 seconds (Fetch, clean, embed).
     try:
     
         if user_id is None:
@@ -145,8 +148,8 @@ async def sync_emails(user_id: Optional[int] = None):
                 else:
                     query = f"newer_than:{int(hours_since)}h"
             else:
-                query = f"newer_than:{days_since}d"
-                #query = f"newer_than:{10}d"
+                #query = f"newer_than:{days_since}d"
+                query = f"newer_than:{10}d"
             
             print(f"DEBUG: Latest email date: {latest_date}")
             print(f"DEBUG: Days since latest: {days_since}")
@@ -169,7 +172,38 @@ async def sync_emails(user_id: Optional[int] = None):
         
         if ids:
             # Prepare and save email data
-            email_data = prepare_email_data(service, ids)   # Dict of full email data
+
+            # BOTTLENECK
+            #email_data = prepare_email_data(service, ids)   # Dict of full email data
+
+            # Send IDs to a local Go server for faster, concurrent fetching and processing.
+            try: 
+                response = requests.post("http://localhost:8001/fetch-emails",
+                    json={
+                        "user_id": user_id,
+                        "mail_ids": ids
+                    },
+                    timeout=120
+                    )            
+
+                if response.status_code == 200:
+                    res = response.json()  
+                    email_data = res["emails"]
+                    print(f"Received {len(email_data)} mails from go server")
+                    #print("Res: ", res)
+                else:
+                    print(f"Go server error: {response.status_code} - {response.text}")
+                    raise HTTPException(status_code=500, detail=f"Error fetching emails from Go service: {response.text}")
+            
+            # Fall back to Python implementation
+            except requests.exceptions.RequestException as e:
+                print(f"Connection error to Go server: {e}")
+                email_data = prepare_email_data(service, ids)
+
+            except Exception as e:
+                print(f"Unexpected error calling Go server: {e}")
+                raise HTTPException(status_code=500, detail=f"Error processing emails: {str(e)}")
+
             saved_emails = db_manager.save_emails(user_id, email_data)
 
             dates_and_events = []
