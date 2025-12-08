@@ -100,7 +100,8 @@ class UserToken(Base):
             token_uri=self.token_uri,
             client_id=self.client_id,
             client_secret=self.client_secret,
-            scopes=scopes_list
+            scopes=scopes_list,
+            expiry=self.expiry
         )
     
     @classmethod

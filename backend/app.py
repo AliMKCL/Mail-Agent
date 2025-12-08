@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import os
 import pickle
 import json
@@ -169,14 +169,23 @@ async def sync_emails(user_id: Optional[int] = None):
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
         ids = list_message_ids(service, query=final_query, max_results=50)
         print(f"DEBUG: Found {len(ids)} email IDs")
-        
+
+        # BOTTLENECK START
+
         if ids:
             # Prepare and save email data
 
-            # BOTTLENECK
+            # BOTTLENECK 1
             #email_data = prepare_email_data(service, ids)   # Dict of full email data
+            """
+            currTime = datetime.now()
+            email_data = prepare_email_data(service, ids)
+            elapsedTime = datetime.now() - currTime
+            print("Time taken to fetch and prepare email data: ", elapsedTime)
+            """
 
             # Send IDs to a local Go server for faster, concurrent fetching and processing.
+            
             try: 
                 response = requests.post("http://localhost:8001/fetch-emails",
                     json={
@@ -214,6 +223,7 @@ async def sync_emails(user_id: Optional[int] = None):
             for num, email in enumerate(email_data):
                 try:
                     # Clean the email content using the clean_email function
+                    # BOTTLENECK 2 =================
                     cleaned_content = clean_email(
                         body_text=email.get('body_text', ''),
                         body_html=email.get('body_html')
@@ -255,6 +265,7 @@ async def sync_emails(user_id: Optional[int] = None):
             
             # Embed the mails in the vector database.
             try:
+                # BOTTLENECK 3 ================
                 await embed_and_store(emails_for_embedding)
             except Exception as embed_err:
                 # Log full traceback for debugging and return a clear API error
