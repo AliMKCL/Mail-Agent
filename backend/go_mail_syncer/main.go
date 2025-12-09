@@ -7,13 +7,14 @@ PLAN:
 2) Get credentials for the user id 										DONE
 2) Request mail bodies from google server (metadata, body, html body)	DONE
 3) Do it concurrently													DONE
-4) Add them to the db
-5) Clean the mails
-6) Embed the cleaned mails
+4) Add them to the db													DONE
+5) Do it concurrently													DONE
+6) Clean the mails														NOT NEEDED
+7) Embed the cleaned mails
+8) Do it concurrently
 */
 
 import (
-	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -22,9 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/oauth2"
 	"google.golang.org/api/gmail/v1"
-	"google.golang.org/api/option"
 	_ "modernc.org/sqlite"
 )
 
@@ -86,14 +85,14 @@ func operateEmails(
 		return
 	}
 
-	// ================ Fetch emals ================
+	// ================ Fetch emails ================
 	startTime := time.Now()
-	emails := fetchWorker(service, ids.MailIDs)
+	emails := fetchWorker(service, ids.MailIDs, ids.UserID)
 	elapsedTime := time.Since(startTime)
-	fmt.Printf("Time taken to fetch emails: %s\n", elapsedTime)
+	fmt.Printf("Time taken to fetch emails and add to db: %s\n", elapsedTime)
 
 	// ================ Add emails to db ================ (Convert to concurrent via mutex)
-	addMailsToDB(emails, ids.UserID)
+	//addMailsToDB(emails, ids.UserID) // (Move to worker)
 
 	var response map[string]interface{}
 
@@ -119,64 +118,78 @@ func operateEmails(
 	fmt.Printf("Successfully fetched %d emails\n", len(emails))
 }
 
-func addMailsToDB(emails []map[string]interface{}, userID int) {
-	db, err := sql.Open("sqlite", DBPath)
+func addMailToDB(email map[string]interface{}, userID int, db *sql.DB) {
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM emails WHERE message_id = ? AND user_id = ?", email["message_id"], userID).Scan(&count)
 	if err != nil {
-		fmt.Println("Error opening database:", err)
+		fmt.Printf("Error checking duplicate for message_id %s: %v\n", email["message_id"], err)
 		return
 	}
-	defer db.Close()
+	if count > 0 {
+		fmt.Printf("Email with message_id %s already exists for user_id %d, skipping insertion.\n", email["message_id"], userID)
+		return
+	}
 
-	for _, email := range emails {
-		// Check if email already exists
-		var count int
-		err := db.QueryRow("SELECT COUNT(*) FROM emails WHERE message_id = ? AND user_id = ?", email["message_id"], userID).Scan(&count)
-		if err != nil {
-			fmt.Printf("Error checking duplicate for message_id %s: %v\n", email["message_id"], err)
-			continue
-		}
-
-		if count > 0 {
-			fmt.Printf("Email with message_id %s already exists for user_id %d, skipping insertion.\n", email["message_id"], userID)
-			continue
-		}
-
-		// Insert new email (10 values, 10 placeholders)
-		// Use SQLite datetime format to match Python's SQLAlchemy: YYYY-MM-DD HH:MM:SS.ffffff
-		_, err = db.Exec("INSERT INTO emails (user_id, message_id, subject, sender, recipient, date_sent, snippet, body_text, body_html, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			userID,
-			email["message_id"],
-			email["subject"],
-			email["sender"],
-			email["recipient"],
-			email["date_sent"],
-			email["snippet"],
-			email["body_text"],
-			email["body_html"],
-			time.Now().Format("2006-01-02 15:04:05.000000"),
-		)
-		if err != nil {
-			fmt.Printf("Error inserting email %s: %v\n", email["message_id"], err)
-		}
+	// Insert new email (10 values, 10 placeholders)
+	// Use SQLite datetime format to match Python's SQLAlchemy: YYYY-MM-DD HH:MM:SS.ffffff
+	_, err = db.Exec("INSERT INTO emails (user_id, message_id, subject, sender, recipient, date_sent, snippet, body_text, body_html, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		userID,
+		email["message_id"],
+		email["subject"],
+		email["sender"],
+		email["recipient"],
+		email["date_sent"],
+		email["snippet"],
+		email["body_text"],
+		email["body_html"],
+		time.Now().Format("2006-01-02 15:04:05.000000"),
+	)
+	if err != nil {
+		fmt.Printf("Error inserting email %s: %v\n", email["message_id"], err)
 	}
 }
 
 // Aproximate speeds:
-// 0.7s for 50 mails with 10 workers
+// Fetch mails:
+// 0.6s for 50 mails with 10 workers
 // 5s for 50 mails with 1 worker
 // 13.12s for 50 mails with python single thread
-func fetchWorker(service *gmail.Service, ids []string) []map[string]interface{} {
+// Fetch mails AND add to db:
+// 0.542s for 22 mails with 10 workers (2 duplicates)
+// Fetches mails, adds to db and embeds them. Returns the mails.
+func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]interface{} {
 	var emails []map[string]interface{}
-	var emailsChan = make(chan map[string]interface{}, len(ids))
 	var jobsChan = make(chan string, len(ids))
 
 	var wg sync.WaitGroup
+	var dbWg sync.WaitGroup
 
 	for i := 0; i < len(ids); i++ {
 		jobsChan <- ids[i]
 	}
 	close(jobsChan)
 
+	db, err := sql.Open("sqlite", DBPath)
+	if err != nil {
+		fmt.Println("Error opening database:", err)
+		return emails
+	}
+	defer db.Close()
+
+	var emailsToWrite = make(chan map[string]interface{}, len(ids))
+
+	// Start DB writer goroutine
+	dbWg.Add(1)
+	go func() {
+		defer dbWg.Done()
+		for email := range emailsToWrite {
+			addMailToDB(email, userID, db)
+			emails = append(emails, email)
+		}
+	}()
+
+	// Start worker goroutines
 	for w := 0; w < MaxWorkers; w++ {
 		wg.Add(1)
 		go func(workerID int) {
@@ -184,116 +197,27 @@ func fetchWorker(service *gmail.Service, ids []string) []map[string]interface{} 
 			for mailID := range jobsChan {
 				fmt.Println("Fetching mail ID: ", mailID, " by worker ", workerID)
 				email, err := fetchSingleEmail(service, mailID)
-
 				if err != nil {
 					fmt.Printf("Error fetching email id %s: %v\n", mailID, err)
 					continue
 				}
-				emailsChan <- email
+				emailsToWrite <- email
+
+				// Embed email here in the future
 			}
 		}(w + 1)
 	}
 
-	go func() {
-		wg.Wait()
-		close(emailsChan)
-	}()
+	// Wait for all workers to finish fetching
+	wg.Wait()
+	close(emailsToWrite) // Signal DB writer that no more emails coming
+	fmt.Println("All workers done fetching.")
 
-	for email := range emailsChan {
-		emails = append(emails, email)
-	}
+	// Wait for DB writer to finish
+	dbWg.Wait()
+	fmt.Println("DB writer done.")
 
 	return emails
-}
-
-func getCredentials(userID int) (Credentials, error) {
-	var Creds Credentials
-
-	db, err := sql.Open("sqlite", DBPath) // Create the db connection
-	if err != nil {
-		fmt.Println("Error opening database:", err)
-		return Credentials{}, err
-	}
-
-	defer db.Close()
-	fmt.Println("Database opened successfully")
-
-	row := db.QueryRow("SELECT access_token, refresh_token, token_uri, client_id, client_secret, scopes, expiry, created_at, updated_at FROM user_tokens WHERE user_id = ?", userID)
-
-	var scopesJSON string     // Scopes are stored in DB as a JSON string not array, so it needs to be unmarshaled.
-	var expiry sql.NullString // Expiry can be Null in the database, so I use a temporary string to handle that.
-	if err := row.Scan(&Creds.AccessToken,
-		&Creds.RefreshToken,
-		&Creds.TokenURI,
-		&Creds.ClientID,
-		&Creds.ClientSecret,
-		&scopesJSON,
-		&expiry,
-		&Creds.CreatedAt,
-		&Creds.UpdatedAt); err != nil {
-		if err == sql.ErrNoRows {
-			fmt.Println("No credentials found for user ID:", userID)
-			return Credentials{}, err
-		}
-		fmt.Println("Some error occured while allocating credentials:", err)
-		return Credentials{}, err
-	}
-
-	// Convert null expiry to empty string
-	if expiry.Valid {
-		Creds.Expiry = expiry.String
-	} else {
-		Creds.Expiry = ""
-	}
-
-	// Convert the scopes from a comma-separated string to a slice
-	err = json.Unmarshal([]byte(scopesJSON), &Creds.Scopes)
-	if err != nil {
-		fmt.Println("Error unmarshaling scopes:", err)
-		return Credentials{}, err
-	}
-
-	return Creds, nil
-}
-
-func createGmailService(creds Credentials) (*gmail.Service, error) {
-
-	expiryToTime, err := time.Parse(time.RFC3339, creds.Expiry)
-	if err != nil {
-		expiryToTime = time.Time{}
-	}
-	token := &oauth2.Token{
-		AccessToken:  creds.AccessToken,
-		RefreshToken: creds.RefreshToken,
-		TokenType:    "Bearer",
-		Expiry:       expiryToTime,
-	}
-
-	config := &oauth2.Config{
-		ClientID:     creds.ClientID,
-		ClientSecret: creds.ClientSecret,
-		Scopes:       creds.Scopes,
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://accounts.google.com/o/oauth2/auth",
-			TokenURL: creds.TokenURI,
-		},
-	}
-
-	ctx := context.Background()
-
-	// Create our HTTP client using the Oauth2 token. Carries the token to the server for authentication.
-	httpClient := config.Client(ctx, token)
-
-	// Authenticate gmail with the HTTPClient authentication option.
-	// Automatically refreshes expired tokens using the refresh token.
-	gmailService, err := gmail.NewService(ctx, option.WithHTTPClient(httpClient))
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gmail service: %w", err)
-	}
-
-	fmt.Println("Gmail service created successfully")
-	return gmailService, nil
 }
 
 func fetchSingleEmail(service *gmail.Service, mailID string) (map[string]interface{}, error) {
@@ -339,47 +263,6 @@ func fetchSingleEmail(service *gmail.Service, mailID string) (map[string]interfa
 	email["body_html"] = extractBody(msg.Payload, "text/html")
 
 	return email, nil
-}
-
-// Removes timezone name in parentheses (ex: " (UTC)") from date strings)
-func cleanDateString(dateStr string) string {
-	// Find and remove anything after " (" like " (UTC)" or " (PST)"
-	if idx := len(dateStr); idx > 0 {
-		for i := 0; i < len(dateStr); i++ {
-			if i+2 < len(dateStr) && dateStr[i] == ' ' && dateStr[i+1] == '(' {
-				dateStr = dateStr[:i]
-				break
-			}
-		}
-	}
-	return dateStr
-}
-
-// Parses RFC 2822 date strings from Gmail headers
-// Handles multiple format variations including single-digit days and timezone suffixes
-func parseEmailDate(dateStr string) (time.Time, error) {
-	if dateStr == "" {
-		return time.Time{}, fmt.Errorf("empty date string")
-	}
-
-	// Clean the string (remove " (UTC)" or similar timezone suffixes)
-	cleaned := cleanDateString(dateStr)
-
-	// Try multiple RFC 2822 layouts (FOR DEBUGGING)
-	layouts := []string{
-		time.RFC1123Z,                    // "Mon, 02 Jan 2006 15:04:05 -0700"
-		time.RFC1123,                     // "Mon, 02 Jan 2006 15:04:05 MST"
-		"Mon, 2 Jan 2006 15:04:05 -0700", // Single-digit day with numeric timezone
-		"Mon, 2 Jan 2006 15:04:05 MST",   // Single-digit day with named timezone
-	}
-
-	for _, layout := range layouts {
-		if parsed, err := time.Parse(layout, cleaned); err == nil {
-			return parsed, nil
-		}
-	}
-
-	return time.Time{}, fmt.Errorf("unable to parse date: %s", dateStr)
 }
 
 // Extracts body of specified MIME type from Gmail message parts

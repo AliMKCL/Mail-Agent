@@ -208,12 +208,13 @@ async def sync_emails(user_id: Optional[int] = None):
             except requests.exceptions.RequestException as e:
                 print(f"Connection error to Go server: {e}")
                 email_data = prepare_email_data(service, ids)
+                saved_emails = db_manager.save_emails(user_id, email_data)
 
             except Exception as e:
                 print(f"Unexpected error calling Go server: {e}")
                 raise HTTPException(status_code=500, detail=f"Error processing emails: {str(e)}")
 
-            saved_emails = db_manager.save_emails(user_id, email_data)
+            
 
             dates_and_events = []
             print("Email data to be sent to SLM (cleaning emails first):")
