@@ -198,6 +198,7 @@ async def sync_emails(user_id: Optional[int] = None):
                 if response.status_code == 200:
                     res = response.json()  
                     email_data = res["emails"]
+                    saved_emails = email_data  # Go server already saved to DB
                     print(f"Received {len(email_data)} mails from go server")
                     #print("Res: ", res)
                 else:
