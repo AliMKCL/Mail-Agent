@@ -268,7 +268,8 @@ async def sync_emails(user_id: Optional[int] = None):
             # Embed the mails in the vector database.
             try:
                 # BOTTLENECK 3 ================
-                await embed_and_store(emails_for_embedding)
+                #await embed_and_store(emails_for_embedding) # THIS LINE IS WHAT CAUSES THE LONG WAIT
+                print("Embedding is Commented Out For Testing")
             except Exception as embed_err:
                 # Log full traceback for debugging and return a clear API error
                 import traceback

@@ -2,46 +2,73 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-
-	chroma "github.com/amikos-tech/chroma-go"
-	defaultef "github.com/amikos-tech/chroma-go/pkg/embeddings/default_ef"
 )
 
-func embedMails(batch []map[string]interface{}, ef *defaultef.DefaultEmbeddingFunction, client *chroma.Client) {
-	// SEPARATE DUPLICATES FIRST BEFORE EMBEDDING, ONLY EMBED NEW MAILS
-
-	/*
-		PLAN:
-		- Instead of concurrent embedding, via a buffered channel send finished mails into
-		another goroutine which handles embedding.
-		- This avoids the TCP handshake overhead for each mail, and is faster than linearly embedding with a loop.
-
-
-	*/
-
-	// REWRITE TO USE BATCH INSTEAD OF ONE BY ONE
-
-	ctx := context.Background
-
-	var mailsToEmbed []interface{}
-
+func embedMails(batch []map[string]interface{}) [][]float32 {
+	// Extract body_text from each email
+	documents := make([]string, 0, len(batch))
 	for _, email := range batch {
-		mailsToEmbed = append(mailsToEmbed, email["body_text"])
+		documents = append(documents, email["body_text"].(string))
 	}
 
-	jsonData, _ := json.Marshal(map[string]interface{}{
-		"mailsToEmbed": mailsToEmbed,
-	})
+	// Get embeddings using Ollama with mxbai-embed-large model
+	embeddings, err := getOllamaEmbeddings(documents)
+	if err != nil {
+		fmt.Printf("Error getting embeddings: %v\n", err)
+		return embeddings
+	}
 
-	// bytes.NewBuffer converts jsonData into an io.Reader (what http.Post expects)
-	// application/json is content type (which is json)
-	http.Post("http://localhost:8002/embed-email", "application/json", bytes.NewBuffer(jsonData))
+	fmt.Printf("Successfully embedded batch of %d emails (got %d embeddings)\n", len(batch), len(embeddings))
 
-	client.GetCollection(ctx, "mails", ef) // OR maybe just embedDocuments?
+	return embeddings
 
-	fmt.Println("Embedding batch of size: ", len(batch))
+}
+
+// getOllamaEmbeddings calls Ollama API to get embeddings using mxbai-embed-large
+// Uses batch embedding (single HTTP request for all documents)
+func getOllamaEmbeddings(documents []string) ([][]float32, error) {
+	// Prepare batch request for Ollama
+	reqBody := map[string]interface{}{
+		"model": "mxbai-embed-large",
+		"input": documents, // Send all documents at once
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling request: %w", err)
+	}
+
+	// Call Ollama batch embed API (single request)
+	resp, err := http.Post("http://localhost:11434/api/embed", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("error calling Ollama API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Parse batch response
+	var result struct {
+		Embeddings [][]float32 `json:"embeddings"` // Array of embeddings
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	// Verify we got the right number of embeddings
+	if len(result.Embeddings) != len(documents) {
+		return nil, fmt.Errorf("expected %d embeddings but got %d", len(documents), len(result.Embeddings))
+	}
+
+	fmt.Println("Embedding example output:", result.Embeddings[0][:10]) // Print first 5 values of first embedding
+
+	return result.Embeddings, nil
 }

@@ -26,9 +26,6 @@ import (
 
 	"google.golang.org/api/gmail/v1"
 	_ "modernc.org/sqlite"
-
-	chroma "github.com/amikos-tech/chroma-go"
-	defaultef "github.com/amikos-tech/chroma-go/pkg/embeddings/default_ef"
 )
 
 const Port int = 8001
@@ -152,26 +149,26 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 		return emails
 	}
 	defer db.Close()
-
-	// Define the embedding function (chromadb's default one)
-	ef, closeEf, err := defaultef.NewDefaultEmbeddingFunction()
-	if err != nil {
-		fmt.Println("Error creating embedding function:", err)
-		return emails
-	}
-
-	defer func() {
-		err := closeEf()
+	/*
+		ef, closeEf, err := defaultef.NewDefaultEmbeddingFunction()
 		if err != nil {
-			fmt.Println("Error closing embedding function:", err)
+			fmt.Println("Error creating embedding function:", err)
+			return emails
 		}
-	}()
 
-	// Define the http client for chroma
-	client, err := chroma.NewClient(chroma.WithBasePath("http://localhost:8002"))
-	if err != nil {
-		fmt.Println("Failed to create Chroma client:", err)
-	}
+		defer func() {
+			err := closeEf()
+			if err != nil {
+				fmt.Println("Error closing embedding function:", err)
+			}
+		}()
+
+		// Define the http client for chroma
+		client, err := chroma.NewClient(chroma.WithBasePath("http://localhost:8002"))
+		if err != nil {
+			fmt.Println("Failed to create Chroma client:", err)
+		}
+	*/
 
 	var embedWg sync.WaitGroup
 
@@ -189,16 +186,19 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 		}
 	}()
 
+	var embeddings [][][]float32
+
 	embedWg.Add(1)
-	go func() { // Should trigger when the channel is full.
+	go func() {
 		defer embedWg.Done()
 		batch := make([]map[string]interface{}, 0, 50) // Batch size of 50
 
 		for mail := range newMails {
-			if mail != nil { // Nil is for duplicats (where addToDB returns nil)
+			if mail != nil { // Nil is for duplicates (where addToDB returns nil)
 				batch = append(batch, mail)
 				if len(batch) == 50 {
-					embedMails(batch, ef, client)
+					fmt.Println("Embedding batch of size: 50")
+					embeddings = append(embeddings, embedMails(batch)) // This should not block. It should send the batch to another goroutine which handles embedding.
 					numNewMails += len(batch)
 					batch = batch[:0] // Reset batch
 				}
@@ -206,8 +206,9 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 
 		}
 		if len(batch) > 0 {
+			fmt.Println("Embedding final batch of size: ", len(batch))
 			numNewMails += len(batch)
-			embedMails(batch, ef, client)
+			embeddings = append(embeddings, embedMails(batch))
 		}
 	}()
 

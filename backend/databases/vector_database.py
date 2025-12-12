@@ -63,3 +63,8 @@ async def query_vector_db(query: str, top_k: int = 2) -> list[Document]:
 
     return results
 
+
+
+
+
+
