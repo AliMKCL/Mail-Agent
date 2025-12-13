@@ -64,6 +64,31 @@ async def query_vector_db(query: str, top_k: int = 2) -> list[Document]:
     return results
 
 
+async def store_in_vector_db(mails: list[dict]):
+    """Store mails in the vector database with the precomputed embeddings (no additional embeddings)"""
+    
+    documents = []
+    ids = []
+    metadatas = []
+    embeddings = []
+    for mail in mails:
+        ids.append(mail.get('message_id', ''))
+        embeddings.append(mail.get('embedding', []))
+        documents.append(mail.get('body_text', ''))
+        metadatas.append({
+            'message_id': mail.get('message_id', ''),
+            'sender': mail.get('sender', ''),
+            'subject': mail.get('subject', ''),
+            'date_sent': str(mail.get('date_sent', ''))
+        })
+    
+    collection._collection.add(ids=ids,
+                                embeddings=embeddings, 
+                                documents=documents, 
+                                metadatas=metadatas)
+        
+
+
 
 
 

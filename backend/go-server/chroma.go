@@ -8,7 +8,16 @@ import (
 	"net/http"
 )
 
-func embedMails(batch []map[string]interface{}) [][]float32 {
+type EmailWithEmbedding struct {
+	MessageID string    `json:"message_id"`
+	BodyText  string    `json:"body_text"`
+	Embedding []float32 `json:"embedding"`
+	Sender    string    `json:"sender"`
+	Subject   string    `json:"subject"`
+	DateSent  string    `json:"date_sent"`
+}
+
+func embedMails(batch []map[string]interface{}) ([]EmailWithEmbedding, error) {
 	// Extract body_text from each email
 	documents := make([]string, 0, len(batch))
 	for _, email := range batch {
@@ -16,21 +25,21 @@ func embedMails(batch []map[string]interface{}) [][]float32 {
 	}
 
 	// Get embeddings using Ollama with mxbai-embed-large model
-	embeddings, err := getOllamaEmbeddings(documents)
+	mailsWithEmbeddings, err := getOllamaEmbeddings(documents, batch)
 	if err != nil {
 		fmt.Printf("Error getting embeddings: %v\n", err)
-		return embeddings
+		return mailsWithEmbeddings, err
 	}
 
-	fmt.Printf("Successfully embedded batch of %d emails (got %d embeddings)\n", len(batch), len(embeddings))
+	fmt.Printf("Successfully embedded batch of %d emails (got %d embeddings)\n", len(batch), len(mailsWithEmbeddings))
 
-	return embeddings
+	return mailsWithEmbeddings, err
 
 }
 
 // getOllamaEmbeddings calls Ollama API to get embeddings using mxbai-embed-large
 // Uses batch embedding (single HTTP request for all documents)
-func getOllamaEmbeddings(documents []string) ([][]float32, error) {
+func getOllamaEmbeddings(documents []string, batch []map[string]interface{}) ([]EmailWithEmbedding, error) {
 	// Prepare batch request for Ollama
 	reqBody := map[string]interface{}{
 		"model": "mxbai-embed-large",
@@ -54,11 +63,12 @@ func getOllamaEmbeddings(documents []string) ([][]float32, error) {
 		return nil, fmt.Errorf("ollama API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Parse batch response
+	// Format embeddings as a 2d array
 	var result struct {
 		Embeddings [][]float32 `json:"embeddings"` // Array of embeddings
 	}
 
+	// Parse batch response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
@@ -68,7 +78,20 @@ func getOllamaEmbeddings(documents []string) ([][]float32, error) {
 		return nil, fmt.Errorf("expected %d embeddings but got %d", len(documents), len(result.Embeddings))
 	}
 
-	fmt.Println("Embedding example output:", result.Embeddings[0][:10]) // Print first 5 values of first embedding
+	fmt.Println("Embedding example output:", result.Embeddings[0][:5]) // Print first 5 values of first embedding
 
-	return result.Embeddings, nil
+	// Convert mails to the correct format (with embeddings) for python to handle adding to db.
+	var EmailsWithEmbeddings []EmailWithEmbedding
+	for i, embedding := range result.Embeddings {
+		EmailsWithEmbeddings = append(EmailsWithEmbeddings, EmailWithEmbedding{
+			MessageID: batch[i]["message_id"].(string),
+			BodyText:  batch[i]["body_text"].(string),
+			Embedding: embedding,
+			Sender:    batch[i]["sender"].(string),
+			Subject:   batch[i]["subject"].(string),
+			DateSent:  batch[i]["date_sent"].(string),
+		})
+	}
+
+	return EmailsWithEmbeddings, nil
 }

@@ -88,12 +88,9 @@ func operateEmails(
 
 	// ================ Fetch emails & Add to DB ================
 	startTime := time.Now()
-	emails := fetchWorker(service, ids.MailIDs, ids.UserID)
+	emails := fetchWorker(service, ids.MailIDs, ids.UserID) // Returns emails with a field for their embeddings.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Time taken to fetch emails and add to db: %s\n", elapsedTime)
-
-	// ================ Embed body text ================
-	//embedMails(emails)
 
 	var response map[string]interface{}
 
@@ -114,7 +111,7 @@ func operateEmails(
 	}
 
 	w.Header().Set("Content-Type", "application/json") // Tells the client the response type is JSON
-	json.NewEncoder(w).Encode(response)                // Converts the resposnse map into JSON
+	json.NewEncoder(w).Encode(response)                // Converts the response map into JSON
 
 	fmt.Printf("Successfully fetched %d emails\n", len(emails))
 }
@@ -127,14 +124,18 @@ func operateEmails(
 // Fetch mails AND add to db:
 // 0.542s for 22 mails with 10 workers (2 duplicates)
 // Fetches mails, adds to db and embeds them. Returns the mails.
-func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]interface{} {
+func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEmbedding {
 	var emails []map[string]interface{}
 	var jobsChan = make(chan string, len(ids))
 
 	var wg sync.WaitGroup
 	var dbWg sync.WaitGroup
+	var embedWg sync.WaitGroup
 
 	var newMails = make(chan map[string]interface{}, 50)
+
+	var emailsToWrite = make(chan map[string]interface{}, len(ids))
+	var numNewMails int
 
 	// Add jobs to the channel then close it
 	for i := 0; i < len(ids); i++ {
@@ -146,34 +147,9 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 	db, err := sql.Open("sqlite", DBPath)
 	if err != nil {
 		fmt.Println("Error opening database:", err)
-		return emails
+		return []EmailWithEmbedding{}
 	}
 	defer db.Close()
-	/*
-		ef, closeEf, err := defaultef.NewDefaultEmbeddingFunction()
-		if err != nil {
-			fmt.Println("Error creating embedding function:", err)
-			return emails
-		}
-
-		defer func() {
-			err := closeEf()
-			if err != nil {
-				fmt.Println("Error closing embedding function:", err)
-			}
-		}()
-
-		// Define the http client for chroma
-		client, err := chroma.NewClient(chroma.WithBasePath("http://localhost:8002"))
-		if err != nil {
-			fmt.Println("Failed to create Chroma client:", err)
-		}
-	*/
-
-	var embedWg sync.WaitGroup
-
-	var emailsToWrite = make(chan map[string]interface{}, len(ids))
-	var numNewMails int
 
 	// Start DB writer goroutine
 	dbWg.Add(1)
@@ -186,7 +162,7 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 		}
 	}()
 
-	var embeddings [][][]float32
+	var MailsWithEmbeddings []EmailWithEmbedding
 
 	embedWg.Add(1)
 	go func() {
@@ -198,17 +174,26 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 				batch = append(batch, mail)
 				if len(batch) == 50 {
 					fmt.Println("Embedding batch of size: 50")
-					embeddings = append(embeddings, embedMails(batch)) // This should not block. It should send the batch to another goroutine which handles embedding.
+					embeds, err := embedMails(batch) // This should not block. It should send the batch to another goroutine which handles embedding.
+					if err != nil {
+						fmt.Printf("Error embedding mails: %v\n", err)
+					}
+					MailsWithEmbeddings = append(MailsWithEmbeddings, embeds...)
 					numNewMails += len(batch)
 					batch = batch[:0] // Reset batch
 				}
 			}
 
 		}
+		// Embed the remaining mails in the final batch
 		if len(batch) > 0 {
 			fmt.Println("Embedding final batch of size: ", len(batch))
 			numNewMails += len(batch)
-			embeddings = append(embeddings, embedMails(batch))
+			embeds, err := embedMails(batch) // This can block.
+			if err != nil {
+				fmt.Printf("Error embedding mails: %v\n", err)
+			}
+			MailsWithEmbeddings = append(MailsWithEmbeddings, embeds...)
 		}
 	}()
 
@@ -244,7 +229,9 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []map[string]
 	fmt.Println("Embedding done.")
 	fmt.Println("Number of new mails = ", numNewMails)
 
-	return emails
+	// Send embeddings to python, to add to db
+
+	return MailsWithEmbeddings
 }
 
 func fetchSingleEmail(service *gmail.Service, mailID string) (map[string]interface{}, error) {

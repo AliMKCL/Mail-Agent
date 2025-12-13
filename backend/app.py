@@ -20,7 +20,7 @@ from backend.databases.database import DatabaseManager
 from pprint import pprint
 from backend.services.setup_calendar import get_calendar_service, authenticate_google_calendar
 from backend.services.moodle_calendar import get_moodle_events_for_api
-from backend.databases.vector_database import embed_and_store, query_vector_db
+from backend.databases.vector_database import embed_and_store, query_vector_db, store_in_vector_db
 from backend.services.gmail_read import get_service, list_message_ids, prepare_email_data
 from datetime import datetime, timedelta
 
@@ -195,10 +195,12 @@ async def sync_emails(user_id: Optional[int] = None):
                     timeout=120
                     )            
 
-                if response.status_code == 200:
+                if response.status_code >= 200 and response.status_code < 300:
                     res = response.json()  
                     email_data = res["emails"]
-                    saved_emails = email_data  # Go server already saved to DB
+                    
+                    await store_in_vector_db(email_data)
+
                     print(f"Received {len(email_data)} mails from go server")
                     #print("Res: ", res)
                 else:
@@ -208,8 +210,10 @@ async def sync_emails(user_id: Optional[int] = None):
             # Fall back to Python implementation
             except requests.exceptions.RequestException as e:
                 print(f"Connection error to Go server: {e}")
+                print("Using Python approach")
                 email_data = prepare_email_data(service, ids)
                 saved_emails = db_manager.save_emails(user_id, email_data)
+                await embed_and_store(saved_emails)
 
             except Exception as e:
                 print(f"Unexpected error calling Go server: {e}")
@@ -217,175 +221,11 @@ async def sync_emails(user_id: Optional[int] = None):
 
             
 
-            dates_and_events = []
-            print("Email data to be sent to SLM (cleaning emails first):")
-            
-            # Clean email content to reduce token count
-            cleaned_emails = []
-            for num, email in enumerate(email_data):
-                try:
-                    # Clean the email content using the clean_email function
-                    # BOTTLENECK 2 =================
-                    cleaned_content = clean_email(
-                        body_text=email.get('body_text', ''),
-                        body_html=email.get('body_html')
-                    )
-                    cleaned_emails.append({
-                        'index': num,
-                        'subject': email.get('subject', ''),
-                        'cleaned_body': cleaned_content
-                    })
-                    
-                    # Show before/after size comparison
-                    original_size = len(email.get('body_text', ''))
-                    cleaned_size = len(cleaned_content)
-                    reduction_pct = ((original_size - cleaned_size) / original_size * 100) if original_size > 0 else 0
-                    print(f"Mail {num}: {original_size} -> {cleaned_size} chars ({reduction_pct:.1f}% reduction)")
-                    
-                except Exception as e:
-                    print(f"Error cleaning email {num}: {e}")
-                    # Fallback to original body_text if cleaning fails
-                    cleaned_emails.append({
-                        'index': num,
-                        'subject': email.get('subject', ''),
-                        'cleaned_body': email.get('body_text', '')
-                    })
-            
-            # Embed the cleaned mails in the vector db
-            # Combine cleaned content with original metadata for complete documents
-            emails_for_embedding = []
-            for idx, cleaned_email in enumerate(cleaned_emails):
-                print(f"Embedding mail {idx}")
-                original_email = email_data[idx]
-                emails_for_embedding.append({
-                    'message_id': original_email.get('message_id', ''),
-                    'sender': original_email.get('sender', ''),
-                    'subject': original_email.get('subject', ''),
-                    'date_sent': original_email.get('date_sent', ''),
-                    'body_text': cleaned_email.get('cleaned_body', '')  # Use cleaned content
-                })
-            
-            # Embed the mails in the vector database.
-            try:
-                # BOTTLENECK 3 ================
-                #await embed_and_store(emails_for_embedding) # THIS LINE IS WHAT CAUSES THE LONG WAIT
-                print("Embedding is Commented Out For Testing")
-            except Exception as embed_err:
-                # Log full traceback for debugging and return a clear API error
-                import traceback
-                tb = traceback.format_exc()
-                print("ERROR during embed_and_store:\n", tb)
-                # Return a structured error so frontend can surface it
-                return {
-                    "status": "error",
-                    "message": "Failed to embed emails into vector database",
-                    "error": str(embed_err),
-                    "traceback": tb
-                }
-            
-            # Process emails in batches based on character count (3000 char limit per batch)
-            batch_char_limit = 3000
-            base_prompt_parts = [
-                "[INST]Task: You are a date extractor. Do not summarize or interpret. Extract only explicit or relative dates and their associated events from the text. ",
-                "Rules:\n",
-                "1. Output must be a strict JSON array only. No extra text.",
-                "2. Each item has: 'date': formatted as dd-MM-yyyy, 'description': short phrase of the event or context tied to the date",
-                "3. If a year is not given, assume the nearest year for that month",
-                "4. If no dates exist, output an empty array []",
-                "5. Include an event and date only if the date is in the form of a deadline, not a random or past event"
-                "6. Never explain. Never add extra fields, never add extra data to fields.",
-                "The email contents are as follows: [/INST]"
-            ]
-            
-            # Group emails into batches based on character count
-            batches = []
-            current_batch = []
-            current_batch_chars = 0
-            
-            for cleaned_email in cleaned_emails:
-                body_snip = cleaned_email['cleaned_body'].strip()
-                email_char_count = len(body_snip)
-                
-                print(f"Mail {cleaned_email['index']}: {email_char_count} chars after cleaning")
-                
-                # If single email exceeds limit, process it alone
-                if email_char_count > batch_char_limit:
-                    # First, add current batch if it has content
-                    if current_batch:
-                        batches.append(current_batch)
-                        current_batch = []
-                        current_batch_chars = 0
-                    
-                    # Add the large email as its own batch
-                    batches.append([cleaned_email])
-                    print(f"  -> Processing large email alone ({email_char_count} chars)")
-                    
-                # If adding this email would exceed limit, start new batch
-                elif current_batch_chars + email_char_count > batch_char_limit:
-                    batches.append(current_batch)
-                    current_batch = [cleaned_email]
-                    current_batch_chars = email_char_count
-                    print(f"  -> Starting new batch (current: {email_char_count} chars)")
-                    
-                # Add to current batch
-                else:
-                    current_batch.append(cleaned_email)
-                    current_batch_chars += email_char_count
-                    print(f"  -> Added to current batch (total: {current_batch_chars} chars)")
-            
-            # Add final batch if it has content
-            if current_batch:
-                batches.append(current_batch)
-            
-            print(f"\nProcessing {len(cleaned_emails)} emails in {len(batches)} batches:")
-            
-            # Process each batch separately
-            for batch_idx, batch in enumerate(batches):
-                batch_chars = sum(len(email['cleaned_body'].strip()) for email in batch)
-                print(f"Batch {batch_idx + 1}/{len(batches)}: {len(batch)} emails, {batch_chars} chars")
-                
-                # Build prompt for this batch
-                prompt_parts = base_prompt_parts.copy()
-                
-                for cleaned_email in batch:
-                    body_snip = cleaned_email['cleaned_body'].strip()
-                    prompt_parts.append(f"| {body_snip} |")
-                    #print(body_snip)
-                
-                prompt = "\n\n".join(prompt_parts)
-                # Commented out slm response for testing as this took too long.
-                """
-                try:
-                    print(f"Sending batch {batch_idx + 1} to SLM (prompt length: {len(prompt)} chars)")
-                    response = slm_response(prompt)
-                    dates_and_events.append(response)
-                    
-                    # Record SLM response to data.json
-                    #record_slm_response(response)
-                    
-                    print(f"Batch {batch_idx + 1} SLM RESPONSE:")
-                    pprint(response)
-                    print()
-                    
-                except Exception as slm_error:
-                    print(f"ERROR: Batch {batch_idx + 1} SLM processing failed: {slm_error}")
-                    dates_and_events.append(f"BATCH_{batch_idx + 1}_ERROR: {slm_error}")
-                    print("Continuing with next batch...")
-                """
-                
-            
-            print("All batches processed.")
-            print("FINAL SLM RESPONSES:")
-            if dates_and_events:
-                pprint(dates_and_events)
-            print("\n\n")
-            
-
             return {
                 "status": "success",
-                "message": f"Synced {len(saved_emails)} new emails",
+                "message": f"Synced {len(email_data)} new emails",
                 "total_fetched": len(ids),
-                "new_emails": len(saved_emails)
+                "new_emails": len(email_data)
             }
         else:
             return {
