@@ -96,11 +96,11 @@ func operateEmails(
 
 	if len(emails) == 0 {
 		response = map[string]interface{}{
-			"status": "fail",
+			"status": "success",
 			"emails": emails,
 			"count":  0,
 		}
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusOK)
 	} else {
 		response = map[string]interface{}{
 			"status": "success",
@@ -163,24 +163,40 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 	}()
 
 	var MailsWithEmbeddings []EmailWithEmbedding
+	var mweLock sync.Mutex
 
 	embedWg.Add(1)
 	go func() {
 		defer embedWg.Done()
 		batch := make([]map[string]interface{}, 0, 50) // Batch size of 50
 
+		var embeddingWg sync.WaitGroup
+
 		for mail := range newMails {
 			if mail != nil { // Nil is for duplicates (where addToDB returns nil)
 				batch = append(batch, mail)
 				if len(batch) == 50 {
 					fmt.Println("Embedding batch of size: 50")
-					embeds, err := embedMails(batch) // This should not block. It should send the batch to another goroutine which handles embedding.
-					if err != nil {
-						fmt.Printf("Error embedding mails: %v\n", err)
-					}
-					MailsWithEmbeddings = append(MailsWithEmbeddings, embeds...)
-					numNewMails += len(batch)
-					batch = batch[:0] // Reset batch
+
+					// Make a copy of the batch to avoid race condition
+					batchCopy := make([]map[string]interface{}, len(batch))
+					copy(batchCopy, batch)
+
+					embeddingWg.Add(1)
+					go func(batchCopy []map[string]interface{}) { // After batch fills, it is operated on in a separate Goroutine.
+						defer embeddingWg.Done()
+
+						embeds, err := embedMails(batchCopy)
+						if err != nil {
+							fmt.Printf("Error embedding mails: %v\n", err)
+						}
+						mweLock.Lock()
+						MailsWithEmbeddings = append(MailsWithEmbeddings, embeds...)
+						numNewMails += len(batchCopy)
+						mweLock.Unlock()
+					}(batchCopy)
+
+					batch = batch[:0] // Reset batch in parent goroutine
 				}
 			}
 
@@ -188,13 +204,19 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 		// Embed the remaining mails in the final batch
 		if len(batch) > 0 {
 			fmt.Println("Embedding final batch of size: ", len(batch))
-			numNewMails += len(batch)
-			embeds, err := embedMails(batch) // This can block.
+
+			embeds, err := embedMails(batch)
 			if err != nil {
 				fmt.Printf("Error embedding mails: %v\n", err)
+			} else {
+				mweLock.Lock()
+				numNewMails += len(batch)
+				MailsWithEmbeddings = append(MailsWithEmbeddings, embeds...)
+				mweLock.Unlock()
 			}
-			MailsWithEmbeddings = append(MailsWithEmbeddings, embeds...)
 		}
+
+		embeddingWg.Wait()
 	}()
 
 	// Start worker goroutines

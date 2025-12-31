@@ -167,7 +167,7 @@ async def sync_emails(user_id: Optional[int] = None):
         
         # Fetch email IDs from Gmail Primary inbox only
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
-        ids = list_message_ids(service, query=final_query, max_results=50)
+        ids = list_message_ids(service, query=final_query, max_results=150)
         print(f"DEBUG: Found {len(ids)} email IDs")
 
         # BOTTLENECK START
@@ -195,14 +195,17 @@ async def sync_emails(user_id: Optional[int] = None):
                     timeout=120
                     )            
 
-                if response.status_code >= 200 and response.status_code < 300:
+                if response.status_code == 200: 
                     res = response.json()  
-                    email_data = res["emails"]
-                    
-                    await store_in_vector_db(email_data)
+                    if "emails" in res and res["emails"]:
+                        email_data = res["emails"]
+                        
+                        await store_in_vector_db(email_data)
 
-                    print(f"Received {len(email_data)} mails from go server")
-                    #print("Res: ", res)
+                        print(f"Received {len(email_data)} mails from go server")
+                    else:
+                        print("No new emails received from Go server")
+                        email_data = []
                 else:
                     print(f"Go server error: {response.status_code} - {response.text}")
                     raise HTTPException(status_code=500, detail=f"Error fetching emails from Go service: {response.text}")
