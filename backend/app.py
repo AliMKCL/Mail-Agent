@@ -347,15 +347,12 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
                     }
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
-        # Set default date range if not provided (current month)
         if not start_date:
-            # Start from beginning of month (midnight)
-            start_date = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
+            # Display events from X months ago to now. 
+            start_date = (datetime.now() - timedelta(days=180)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
         if not end_date:
-            # Get last day of current month at end of day
-            next_month = datetime.now().replace(day=28) + timedelta(days=4)
-            last_day = next_month - timedelta(days=next_month.day)
-            end_date = last_day.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
+            # End 2 years from now (730 days)
+            end_date = (datetime.now() + timedelta(days=730)).replace(hour=23, minute=59, second=59).isoformat() + 'Z'
         
         # Fetch events from Google Calendar
         events_result = service.events().list(

@@ -452,11 +452,41 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
 }
 
-.nav-btn:hover {
+.nav-btn:hover:not(.disabled):not(:disabled) {
     background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Disabled state - make button grayed out with NO hover effects */
+.nav-btn.disabled,
+.nav-btn:disabled,
+button.nav-btn.disabled,
+button.nav-btn:disabled {
+    color: rgba(255, 255, 255, 0.3) !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+}
+
+/* Ensure SVG inside disabled button is also grayed */
+.nav-btn.disabled svg,
+.nav-btn:disabled svg,
+button.nav-btn.disabled svg,
+button.nav-btn:disabled svg {
+    fill: rgba(255, 255, 255, 0.3) !important;
+    color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Override any hover effects on disabled buttons */
+.nav-btn.disabled:hover,
+.nav-btn:disabled:hover,
+button.nav-btn.disabled:hover,
+button.nav-btn:disabled:hover {
+    background-color: transparent !important;
+    color: rgba(255, 255, 255, 0.3) !important;
 }
 
 .nav-btn svg {

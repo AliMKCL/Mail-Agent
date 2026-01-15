@@ -201,14 +201,13 @@ def get_moodle_events_for_api(user_id: int = DEFAULT_USER_ID,
     if not calendar_id:
         return {"error": f"Calendar '{MOODLE_CALENDAR_NAME}' not found", "events": {}}
 
-    # Set default date range if not provided
+    
     if not start_date:
-        # Start from beginning of month (midnight)
-        start_date = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
+        # Display events from X months ago to now. 
+        start_date = (datetime.now() - timedelta(days=180)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
     if not end_date:
-        # 90 days ahead from now
-        next_month = datetime.now().replace(hour=23, minute=59, second=59) + timedelta(days=90)
-        end_date = next_month.isoformat() + 'Z'
+        # End 2 years from now (730 days)
+        end_date = (datetime.now() + timedelta(days=730)).replace(hour=23, minute=59, second=59).isoformat() + 'Z'
 
     try:
         events_result = service.events().list(

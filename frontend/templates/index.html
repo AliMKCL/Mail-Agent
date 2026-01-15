@@ -215,6 +215,7 @@
 
         // Calendar variables
         let currentCalendarDate = new Date();
+        let initialCalendarDate = new Date(); // Track when events were loaded (current date)
         let selectedDateElement = null;
         let calendarEvents = {}; // Store events by date
 
@@ -543,10 +544,10 @@
             }
 
             const syncBtn = document.getElementById('syncBtn');
-            const originalText = syncBtn.textContent;
+            const originalHTML = syncBtn.innerHTML; // Save the original HTML (including SVG)
 
             syncBtn.disabled = true;
-            syncBtn.textContent = 'Syncing...';
+            syncBtn.innerHTML = 'Syncing...'; // Show text while syncing
 
             try {
                 const response = await fetch(`/api/sync?user_id=${currentUserId}`);
@@ -561,17 +562,17 @@
                 await loadEmails();
 
                 // Show success message briefly
-                syncBtn.textContent = 'Done!';
+                syncBtn.innerHTML = '✓ Done!';
                 setTimeout(() => {
-                    syncBtn.textContent = originalText;
+                    syncBtn.innerHTML = originalHTML; // Restore the original SVG icon
                     syncBtn.disabled = currentUserId === null;
                 }, 2000);
 
             } catch (error) {
                 console.error('Error syncing emails:', error);
-                syncBtn.textContent = 'Error';
+                syncBtn.innerHTML = '✗ Error';
                 setTimeout(() => {
-                    syncBtn.textContent = originalText;
+                    syncBtn.innerHTML = originalHTML; // Restore the original SVG icon
                     syncBtn.disabled = currentUserId === null;
                 }, 2000);
             }
@@ -1241,7 +1242,43 @@
 
         function changeMonth(direction) {
             currentCalendarDate.setMonth(currentCalendarDate.getMonth() + direction);
+            updateNavigationButtons();
             renderCalendar();
+        }
+
+        function updateNavigationButtons() {
+            const prevBtn = document.getElementById('prevMonth');
+            const nextBtn = document.getElementById('nextMonth');
+            
+            if (!prevBtn || !nextBtn) return; // Safety check
+            
+            // Calculate month difference from initial date
+            const monthDiff = (currentCalendarDate.getFullYear() - initialCalendarDate.getFullYear()) * 12 
+                            + (currentCalendarDate.getMonth() - initialCalendarDate.getMonth());
+            
+            console.log('Month difference:', monthDiff); // Debug log
+            
+            // Disable prev button if we're 6 months back (or more)
+            if (monthDiff <= -6) {
+                prevBtn.disabled = true;
+                prevBtn.classList.add('disabled');
+                console.log('Left button DISABLED');
+            } else {
+                prevBtn.disabled = false;
+                prevBtn.classList.remove('disabled');
+                console.log('Left button enabled');
+            }
+            
+            // Disable next button if we're 24 months (2 years) forward (or more)
+            if (monthDiff >= 24) {
+                nextBtn.disabled = true;
+                nextBtn.classList.add('disabled');
+                console.log('Right button DISABLED');
+            } else {
+                nextBtn.disabled = false;
+                nextBtn.classList.remove('disabled');
+                console.log('Right button enabled');
+            }
         }
 
         function selectDate(element, dateKey) {
@@ -1713,6 +1750,10 @@
                     }
                 }
 
+                // Reset to current date and update navigation buttons
+                initialCalendarDate = new Date();
+                currentCalendarDate = new Date();
+                updateNavigationButtons();
                 renderCalendar();
             } catch (error) {
                 console.error('Error loading calendar events:', error);
@@ -1754,6 +1795,7 @@
 
         // Initialize calendar
         function initializeCalendar() {
+            updateNavigationButtons();
             renderCalendar();
             if (currentUserId) {
                 loadCalendarEvents();
