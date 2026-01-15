@@ -149,7 +149,6 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 		fmt.Println("Error opening database:", err)
 		return []EmailWithEmbedding{}
 	}
-	defer db.Close()
 
 	// Start DB writer goroutine
 	dbWg.Add(1)
@@ -244,6 +243,7 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 	// Wait for DB writer to finish
 	dbWg.Wait()
 	close(newMails) // Signal embedding goroutine no more mails coming
+	db.Close()
 	fmt.Println("DB writer done.")
 
 	// Wait for embedding to finish

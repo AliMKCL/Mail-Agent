@@ -35,6 +35,8 @@ func parseEmailDate(dateStr string) (time.Time, error) {
 		time.RFC1123,                     // "Mon, 02 Jan 2006 15:04:05 MST"
 		"Mon, 2 Jan 2006 15:04:05 -0700", // Single-digit day with numeric timezone
 		"Mon, 2 Jan 2006 15:04:05 MST",   // Single-digit day with named timezone
+		"2 Jan 2006 15:04:05 -0700",      // ← ADD: Without weekday, single digit
+		"02 Jan 2006 15:04:05 -0700",     // ← ADD: Without weekday, double digit
 	}
 
 	for _, layout := range layouts {

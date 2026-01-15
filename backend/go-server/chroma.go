@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type EmailWithEmbedding struct {
@@ -40,6 +41,9 @@ func embedMails(batch []map[string]interface{}) ([]EmailWithEmbedding, error) {
 // getOllamaEmbeddings calls Ollama API to get embeddings using mxbai-embed-large
 // Uses batch embedding (single HTTP request for all documents)
 func getOllamaEmbeddings(documents []string, batch []map[string]interface{}) ([]EmailWithEmbedding, error) {
+	startTime := time.Now()
+	fmt.Printf("[EMBED] Starting batch of %d emails\n", len(documents))
+
 	// Prepare batch request for Ollama
 	reqBody := map[string]interface{}{
 		"model": "mxbai-embed-large",
@@ -83,15 +87,32 @@ func getOllamaEmbeddings(documents []string, batch []map[string]interface{}) ([]
 	// Convert mails to the correct format (with embeddings) for python to handle adding to db.
 	var EmailsWithEmbeddings []EmailWithEmbedding
 	for i, embedding := range result.Embeddings {
+		// Safely extract string fields with nil checks
+		messageID, _ := batch[i]["message_id"].(string)
+		bodyText, _ := batch[i]["body_text"].(string)
+		sender, _ := batch[i]["sender"].(string)
+		subject, _ := batch[i]["subject"].(string)
+
+		// Handle date_sent which might be nil
+		dateSent := ""
+		if date, ok := batch[i]["date_sent"].(string); ok {
+			dateSent = date
+		} else {
+			dateSent = "1970-01-01 00:00:00.000000" // Default date for nil/unparseable dates
+		}
+
 		EmailsWithEmbeddings = append(EmailsWithEmbeddings, EmailWithEmbedding{
-			MessageID: batch[i]["message_id"].(string),
-			BodyText:  batch[i]["body_text"].(string),
+			MessageID: messageID,
+			BodyText:  bodyText,
 			Embedding: embedding,
-			Sender:    batch[i]["sender"].(string),
-			Subject:   batch[i]["subject"].(string),
-			DateSent:  batch[i]["date_sent"].(string),
+			Sender:    sender,
+			Subject:   subject,
+			DateSent:  dateSent,
 		})
 	}
+
+	elapsed := time.Since(startTime)
+	fmt.Printf("[EMBED] Completed batch of %d emails in %s\n", len(documents), elapsed)
 
 	return EmailsWithEmbeddings, nil
 }

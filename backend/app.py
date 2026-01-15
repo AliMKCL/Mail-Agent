@@ -134,7 +134,7 @@ async def sync_emails(user_id: Optional[int] = None):
         latest_date = db_manager.get_latest_email_date(user_id)
         
 
-        flag = True
+        flag = False
         # Build Gmail search query to fetch only newer emails
         query = ""
         if latest_date:
@@ -148,8 +148,7 @@ async def sync_emails(user_id: Optional[int] = None):
                 else:
                     query = f"newer_than:{int(hours_since)}h"
             else:
-                #query = f"newer_than:{days_since}d"
-                query = f"newer_than:{10}d"
+                query = f"newer_than:{days_since}d"
             
             print(f"DEBUG: Latest email date: {latest_date}")
             print(f"DEBUG: Days since latest: {days_since}")
@@ -167,7 +166,7 @@ async def sync_emails(user_id: Optional[int] = None):
         
         # Fetch email IDs from Gmail Primary inbox only
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
-        ids = list_message_ids(service, query=final_query, max_results=150)
+        ids = list_message_ids(service, query=final_query, max_results=300)
         print(f"DEBUG: Found {len(ids)} email IDs")
 
         # BOTTLENECK START
@@ -192,7 +191,7 @@ async def sync_emails(user_id: Optional[int] = None):
                         "user_id": user_id,
                         "mail_ids": ids
                     },
-                    timeout=120
+                    timeout=1000
                     )            
 
                 if response.status_code == 200: 
