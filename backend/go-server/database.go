@@ -15,7 +15,7 @@ func addMailToDB(email map[string]interface{}, userID int, db *sql.DB) map[strin
 		fmt.Printf("Error checking duplicate for message_id %s: %v\n", email["message_id"], err)
 		panic(err)
 	}
-	if count > 0 {
+	if count > 0 { // Duplicate found, skip insertion
 		fmt.Printf("Email with message_id %s already exists for user_id %d, skipping insertion.\n", email["message_id"], userID)
 		return nil
 	}

@@ -1,0 +1,7 @@
+2026/01/28 13:37:55 2026-01-28 13:37:55 [INFO] [RateLimiter] Starting Rate Limiter Microservice v1.0.0
+2026/01/28 13:37:55 2026-01-28 13:37:55 [INFO] [RateLimiter] Default configuration: 5 tokens capacity, 5 tokens per hour
+2026/01/28 13:37:55 2026-01-28 13:37:55 [INFO] [RateLimiter] Server listening on :8002
+2026/01/28 13:37:55 2026-01-28 13:37:55 [INFO] [RateLimiter] Visit http://localhost:8002 for API documentation
+2026/01/28 13:38:08 2026-01-28 13:38:08 [INFO] [RateLimiter] Shutting down server...
+2026/01/28 13:38:08 2026-01-28 13:38:08 [INFO] [RateLimiter] Final stats: total_requests=0 allowed=0 denied=0 active_buckets=0 uptime=13s
+2026/01/28 13:38:08 2026-01-28 13:38:08 [INFO] [RateLimiter] Server stopped

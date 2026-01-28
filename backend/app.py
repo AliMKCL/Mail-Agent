@@ -33,6 +33,13 @@ from googleapiclient.errors import HttpError
 
 import requests
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/..")
+from ratelimiter.client.ratelimiter_client import RateLimiterClient
+
+# INITIALIZE RATE LIMITER (add after db_manager initialization, around line 40)
+limiter = RateLimiterClient("http://localhost:8002") 
+
 # Initialize FastAPI app
 app = FastAPI(title="Gmail Agent", description="Web interface for Gmail email management")
 
@@ -90,6 +97,25 @@ async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dic
         if user_id is None:
             raise HTTPException(status_code=400, detail="user_id parameter is required")
         
+        # ==================== RATE LIMITED EMAILS REFRESH / user scope ====================
+        result = limiter.check(
+             scope="user",
+             identifier=str(user_id),
+             endpoint="/api/emails"
+        )
+
+        if not result["allowed"]:
+            raise HTTPException(
+                 status_code=429,
+                 detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
+                 headers={
+                     "X-RateLimit-Limit": str(result["limit"]),
+                     "X-RateLimit-Remaining": "0",
+                     "Retry-After": str(result["retry_after_seconds"])
+                }
+            )
+        # =====================================================================
+
         # Fetch stored emails for the specified user
         stored_emails = db_manager.get_user_emails(user_id, limit=limit)
         
@@ -823,6 +849,25 @@ async def llm_query_endpoint(request_data: dict):
     }
     """
     try:
+        # ==================== RATE LIMITED LLM QUERY / global scope ====================
+        result = limiter.check(
+             scope="global",
+             identifier="all",
+             endpoint="/api/query"
+        )
+
+        if not result["allowed"]:
+            raise HTTPException(
+                 status_code=429,
+                 detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
+                 headers={
+                     "X-RateLimit-Limit": str(result["limit"]),
+                     "X-RateLimit-Remaining": "0",
+                     "Retry-After": str(result["retry_after_seconds"])
+                }
+            )
+        # ================================================================
+
         from backend.llm_integration import process_llm_query
 
         query = request_data.get("query")

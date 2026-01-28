@@ -50,8 +50,7 @@ type Credentials struct {
 }
 
 func main() {
-	// ====== CREATE THE GO HTTP SERVER ======
-	mux := http.NewServeMux()
+	mux := http.NewServeMux() // Multiplexer looks at path in request and routes to correct handler.
 
 	mux.HandleFunc("/fetch-emails", operateEmails)
 
@@ -64,7 +63,7 @@ func operateEmails(
 	r *http.Request, // Contains all the information of the request
 ) {
 	var ids messageIDs
-	// Decode the JSON request body into the mail struct
+	// Decode the JSON request body into the messageIDs struct
 	err := json.NewDecoder(r.Body).Decode(&ids)
 
 	if err != nil {
@@ -116,23 +115,16 @@ func operateEmails(
 	fmt.Printf("Successfully fetched %d emails\n", len(emails))
 }
 
-// Aproximate speeds:
-// Fetch mails:
-// 0.6s for 50 mails with 10 workers
-// 5s for 50 mails with 1 worker
-// 13.12s for 50 mails with python single thread
-// Fetch mails AND add to db:
-// 0.542s for 22 mails with 10 workers (2 duplicates)
 // Fetches mails, adds to db and embeds them. Returns the mails.
 func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEmbedding {
-	var emails []map[string]interface{}
+	var emails []map[string]interface{} // Slice of emails (with key string, value any / interface{})
 	var jobsChan = make(chan string, len(ids))
 
 	var wg sync.WaitGroup
 	var dbWg sync.WaitGroup
 	var embedWg sync.WaitGroup
 
-	var newMails = make(chan map[string]interface{}, 50)
+	var newMails = make(chan map[string]interface{}, 50) // Buffered channel at length 50.
 
 	var emailsToWrite = make(chan map[string]interface{}, len(ids))
 	var numNewMails int
@@ -147,16 +139,16 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 	db, err := sql.Open("sqlite", DBPath)
 	if err != nil {
 		fmt.Println("Error opening database:", err)
-		return []EmailWithEmbedding{}
+		return []EmailWithEmbedding{} // {} means empty slice (non-nil slice of type EmailWithEmbeddings).
 	}
 
 	// Start DB writer goroutine
 	dbWg.Add(1)
 	go func() {
 		defer dbWg.Done()
-		for email := range emailsToWrite {
-			newMail := addMailToDB(email, userID, db)
-			newMails <- newMail // Add the newMails to buffered channel
+		for email := range emailsToWrite { // If no values here will simply wait / block.
+			newMail := addMailToDB(email, userID, db) // Add to db, get back the mail if new, else nil for duplicate.
+			newMails <- newMail                       // Add the newMails to buffered channel
 			emails = append(emails, email)
 		}
 	}()
@@ -218,7 +210,7 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 		embeddingWg.Wait()
 	}()
 
-	// Start worker goroutines
+	// Start worker goroutines, MAIN loop.
 	for w := 0; w < MaxWorkers; w++ {
 		wg.Add(1)
 		go func(workerID int) {

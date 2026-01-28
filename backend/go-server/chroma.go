@@ -19,7 +19,7 @@ type EmailWithEmbedding struct {
 }
 
 func embedMails(batch []map[string]interface{}) ([]EmailWithEmbedding, error) {
-	// Extract body_text from each email
+	// Extract body_text from each email (As only this will be embedded).
 	documents := make([]string, 0, len(batch))
 	for _, email := range batch {
 		documents = append(documents, email["body_text"].(string))
