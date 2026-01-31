@@ -356,8 +356,7 @@ class TestCalendarEndpoints:
         
         response = client.post("/api/calendar/events", json=event_data)
         
-        # API returns 500 instead of 422 - validation needs improvement!
-        assert response.status_code in [422, 500]
+        assert response.status_code in [400, 500]
     
     def test_create_calendar_event_invalid_data(self, test_user):
         """Test POST /api/calendar/events validates event data"""

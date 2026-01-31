@@ -34,7 +34,9 @@ class RateLimiterClient:
         scope: str,
         identifier: str,
         endpoint: str,
-        tokens: int = 1         # How many tokens to consume.
+        tokens: int = 1,
+        capacity: Optional[int] = None,
+        refill_rate: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Check if a request should be allowed based on rate limits
@@ -44,6 +46,8 @@ class RateLimiterClient:
             identifier: User ID, "all", or custom identifier
             endpoint: API endpoint or resource name
             tokens: Number of tokens to consume (default: 1)
+            capacity: Optional maximum tokens for this bucket (only used on first creation)
+            refill_rate: Optional tokens per hour for this bucket (only used on first creation)
 
         Returns:
             Dictionary with:
@@ -57,14 +61,23 @@ class RateLimiterClient:
             requests.RequestException: If request fails
         """
         try:
+            payload = {
+                "scope": scope,
+                "identifier": identifier,
+                "endpoint": endpoint,
+                "tokens": tokens
+            }
+
+            # Add optional config parameters if provided
+            # If these are not provided (since optional), the server uses defaults (these become nil pointers and pattern matched).
+            if capacity is not None:
+                payload["capacity"] = capacity
+            if refill_rate is not None:
+                payload["refill_rate"] = refill_rate
+
             response = requests.post(
                 f"{self.base_url}/check",
-                json={
-                    "scope": scope,
-                    "identifier": identifier,
-                    "endpoint": endpoint,
-                    "tokens": tokens
-                },
+                json=payload,
                 timeout=self.timeout
             )
 

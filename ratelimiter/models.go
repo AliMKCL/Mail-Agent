@@ -6,6 +6,10 @@ type CheckRequest struct {
 	Identifier string `json:"identifier"` // User ID, "all", or custom identifier
 	Endpoint   string `json:"endpoint"`   // API endpoint or resource name
 	Tokens     int64  `json:"tokens"`     // Number of tokens to consume (default: 1)
+
+	// Optional: override default config for this bucket (only used on first creation)
+	Capacity   *int64 `json:"capacity,omitempty"`    // Maximum tokens (nil = use default)
+	RefillRate *int64 `json:"refill_rate,omitempty"` // Tokens per hour (nil = use default)
 }
 
 // CheckResponse represents the response to a rate limit check

@@ -97,21 +97,32 @@ async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dic
         if user_id is None:
             raise HTTPException(status_code=400, detail="user_id parameter is required")
         
+
         # ==================== RATE LIMITED EMAILS REFRESH / user scope ====================
-        result = limiter.check(
-             scope="user",
-             identifier=str(user_id),
-             endpoint="/api/emails"
+        
+        """result = limiter.check(          # This version works per user.
+            scope="user",
+            identifier=str(user_id),
+            endpoint="api/emails",
+        )"""
+
+        result = limiter.check(             # Limit is still default?
+            scope="global",
+            identifier="all",
+            endpoint="api/emails",
+            tokens=1,
+            capacity=10,            # Custom capacity   (Optional)
+            refill_rate=10          # Per hour          (Optional)
         )
 
         if not result["allowed"]:
             raise HTTPException(
-                 status_code=429,
-                 detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
-                 headers={
-                     "X-RateLimit-Limit": str(result["limit"]),
-                     "X-RateLimit-Remaining": "0",
-                     "Retry-After": str(result["retry_after_seconds"])
+                status_code=429,
+                detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
+                headers={
+                    "X-RateLimit-Limit": str(result["limit"]),
+                    "X-RateLimit-Remaining": "0",
+                    "Retry-After": str(result["retry_after_seconds"])
                 }
             )
         # =====================================================================
@@ -136,6 +147,8 @@ async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dic
         
         return emails
         
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions (including 429 rate limit errors) without modification
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching emails: {str(e)}")
 
@@ -149,6 +162,28 @@ async def sync_emails(user_id: Optional[int] = None):
 
     # 50 Mails took 70 seconds (Fetch, clean, embed).
     try:
+
+        # ==================== RATE LIMITED LLM QUERY / global scope ====================
+        result = limiter.check(
+             scope="global",
+             identifier="all",
+             endpoint="api/sync",
+             tokens = 1,
+             capacity = 10,
+             refill_rate = 10
+        )
+
+        if not result["allowed"]:
+            raise HTTPException(
+                 status_code=429,
+                 detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
+                 headers={
+                     "X-RateLimit-Limit": str(result["limit"]),
+                     "X-RateLimit-Remaining": "0",
+                     "Retry-After": str(result["retry_after_seconds"])
+                }
+            )
+        # ================================================================
     
         if user_id is None:
             raise HTTPException(status_code=400, detail="user_id parameter is required")
@@ -263,6 +298,8 @@ async def sync_emails(user_id: Optional[int] = None):
                 "new_emails": 0
             }
             
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions (including 429 rate limit errors) without modification
     except Exception as e:
         error_msg = str(e)
         if "credentials do not contain the necessary fields" in error_msg:
@@ -447,6 +484,29 @@ async def create_calendar_event(request_data: dict):
     Create a new calendar event
     """
     try:
+
+        # ==================== RATE LIMITED EMAILS REFRESH / user scope ====================
+        result = limiter.check(
+             scope="global",
+             identifier="all",
+             endpoint="api/calendar/events",
+             tokens = 1,
+             capacity = 100,
+             refill_rate = 100,
+        )
+
+        if not result["allowed"]:
+            raise HTTPException(
+                 status_code=429,
+                 detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
+                 headers={
+                     "X-RateLimit-Limit": str(result["limit"]),
+                     "X-RateLimit-Remaining": "0",
+                     "Retry-After": str(result["retry_after_seconds"])
+                }
+            )
+        # =====================================================================
+
         user_id = request_data.get('user_id')
         event_data = request_data.get('event_data', {})
         
@@ -529,6 +589,8 @@ async def create_calendar_event(request_data: dict):
             "event_link": created_event.get('htmlLink', '')
         }
         
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions (including 429 rate limit errors and 400 validation errors) without modification
     except HttpError as e:
         raise HTTPException(status_code=500, detail=f"Google Calendar API error: {str(e)}")
     except Exception as e:
@@ -747,6 +809,28 @@ async def query_vector_database(query: str, top_k: int = 3):
         if not query:
             raise HTTPException(status_code=400, detail="Query parameter is required")
         
+        # ==================== RATE LIMITED LLM QUERY / global scope ====================
+        result = limiter.check(
+             scope="global",
+             identifier="all",
+             endpoint="server_total",
+             tokens = 2,
+             capacity = 20,
+             refill_rate = 20
+        )
+
+        if not result["allowed"]:
+            raise HTTPException(
+                 status_code=429,
+                 detail=f"Rate limit exceeded! You can only view emails {result['limit']} times per hour. Wait {result['retry_after_seconds']} seconds.",
+                 headers={
+                     "X-RateLimit-Limit": str(result["limit"]),
+                     "X-RateLimit-Remaining": "0",
+                     "Retry-After": str(result["retry_after_seconds"])
+                }
+            )
+        # ================================================================
+        
         # Query the vector database (it's async)
         results = await query_vector_db(query, top_k=top_k)
         
@@ -831,6 +915,8 @@ async def query_vector_database(query: str, top_k: int = 3):
             "count": len(sources)
         }
         
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions (including 429 rate limit errors) without modification
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error querying vector database: {str(e)}")
 
@@ -853,7 +939,10 @@ async def llm_query_endpoint(request_data: dict):
         result = limiter.check(
              scope="global",
              identifier="all",
-             endpoint="/api/query"
+             endpoint="server_total",
+             tokens = 2,
+             capacity = 20,
+             refill_rate = 20
         )
 
         if not result["allowed"]:

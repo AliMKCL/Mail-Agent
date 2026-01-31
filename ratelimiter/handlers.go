@@ -68,12 +68,14 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 		req.Tokens = 1
 	}
 
-	// Check rate limit
+	// Check rate limit (pass optional custom config)
 	allowed, remaining, resetAfter, retryAfter := s.limiter.Check(
 		req.Scope,
 		req.Identifier,
 		req.Endpoint,
 		req.Tokens,
+		req.Capacity,   // Optional: nil = use default
+		req.RefillRate, // Optional: nil = use default
 	)
 
 	// Log the result

@@ -23,8 +23,8 @@ type Config struct {
 // DefaultConfig returns sensible defaults: 100 requests per hour
 func DefaultConfig() Config {
 	return Config{
-		DefaultCapacity:   5, // 100 token burst capacity
-		DefaultRefillRate: 5, // 100 tokens per hour = 100/3600 tokens per second
+		DefaultCapacity:   5, // _ token burst capacity
+		DefaultRefillRate: 5, // _ tokens per hour = _/3600 tokens per second
 		// Simplified: since we want 100 per hour, we'll use 100 and calculate per-second in bucket
 	}
 }
@@ -76,20 +76,33 @@ func GenerateKey(scope, identifier, endpoint string) string {
 	return fmt.Sprintf("%s:%s:%s", scope, identifier, endpoint)
 }
 
-// getOrCreateBucket retrieves an existing bucket or creates a new one with default config
-func (rl *RateLimiter) getOrCreateBucket(key string) *TokenBucket {
+// getOrCreateBucket retrieves an existing bucket or creates a new one
+// customCapacity and customRefillRate are optional (use nil for defaults)
+func (rl *RateLimiter) getOrCreateBucket(key string, customCapacity, customRefillRate *int64) *TokenBucket {
 	// Try to load existing bucket
 	if bucket, ok := rl.buckets.Load(key); ok {
 		return bucket.(*TokenBucket)
 	}
 
-	// Create new bucket with default configuration
+	// Determine capacity and refill rate to use
+	capacity := rl.config.DefaultCapacity
+	refillRate := rl.config.DefaultRefillRate
+
+	if customCapacity != nil && *customCapacity > 0 {
+		capacity = *customCapacity
+	}
+	if customRefillRate != nil && *customRefillRate > 0 {
+		refillRate = *customRefillRate
+	}
+
+	// Either problem with input or existing bucket therefore nonpersistent changes.
+
 	// Convert refillRate from "per hour" to "per second"
-	refillRatePerSecond := float64(rl.config.DefaultRefillRate) / 3600.0
+	refillRatePerSecond := float64(refillRate) / 3600.0
 
 	// Create bucket with capacity and refill rate per second
 	newBucket := NewTokenBucket(
-		rl.config.DefaultCapacity,
+		capacity,
 		refillRatePerSecond, // Tokens per second as float64
 	)
 
@@ -108,12 +121,13 @@ func (rl *RateLimiter) getOrCreateBucket(key string) *TokenBucket {
 
 // Check verifies if a request should be allowed based on rate limits
 // Returns allowed status, remaining tokens, reset time, and retry time
-func (rl *RateLimiter) Check(scope, identifier, endpoint string, tokens int64) (allowed bool, remaining, resetAfter, retryAfter int64) {
+// customCapacity and customRefillRate are optional (use nil for defaults)
+func (rl *RateLimiter) Check(scope, identifier, endpoint string, tokens int64, customCapacity, customRefillRate *int64) (allowed bool, remaining, resetAfter, retryAfter int64) {
 	// Generate bucket key
 	key := GenerateKey(scope, identifier, endpoint)
 
-	// Get or create bucket
-	bucket := rl.getOrCreateBucket(key)
+	// Get or create bucket with optional custom config
+	bucket := rl.getOrCreateBucket(key, customCapacity, customRefillRate)
 
 	// Update stats
 	rl.stats.mu.Lock()
