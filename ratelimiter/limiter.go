@@ -76,7 +76,7 @@ func GenerateKey(scope, identifier, endpoint string) string {
 	return fmt.Sprintf("%s:%s:%s", scope, identifier, endpoint)
 }
 
-// getOrCreateBucket retrieves an existing bucket or creates a new one
+// getOrCreateBucket retrieves an existing bucket (by its key in buckets / sync.Map) or creates a new one
 // customCapacity and customRefillRate are optional (use nil for defaults)
 func (rl *RateLimiter) getOrCreateBucket(key string, customCapacity, customRefillRate *int64) *TokenBucket {
 	// Try to load existing bucket
@@ -94,8 +94,6 @@ func (rl *RateLimiter) getOrCreateBucket(key string, customCapacity, customRefil
 	if customRefillRate != nil && *customRefillRate > 0 {
 		refillRate = *customRefillRate
 	}
-
-	// Either problem with input or existing bucket therefore nonpersistent changes.
 
 	// Convert refillRate from "per hour" to "per second"
 	refillRatePerSecond := float64(refillRate) / 3600.0

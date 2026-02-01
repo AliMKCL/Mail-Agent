@@ -8,10 +8,18 @@
 #### Notes:
 - The code snippets above show complete examples with error handling. For actual implementation, only the `result = limiter.check(...)` call is essential - customize the rejection handling as needed for your application.
 - The default configuration for limits is defined in limiter.go. This can be changed
-- This guide is designed to ease implementation of this rate-limiting algorihtm with PYTHON (FastAPI). However,
-the go code may be reused as it runs as its own server on port 8002.
+- This guide is designed to ease implementation of this rate-limiting algorihtm with PYTHON (FastAPI). However, the go code may be reused as it runs as its own server on port 8002.
 
 ### How to set up
+
+#### IDEA: 
+- The key part in how this works is, each bucket is generated with and assigned a key, from its scope, identifier, and endpoint.
+- To have a unique bucket for each user within an endpoint, keep the scope (user) and endpoint same, modify the identifier based on the user's identifier (such as id).
+- To have a global bucket for an enpoint, for the endpoint define the scope (global) and identifier (all), and provide the endpoint name such that there is no other bucekt created with these exact inputs.
+- To have a server-wide limit, for all the endpoints that the limit applies, assign a bucket with the same key. Therefore same scope (global), identifier (all), and endpoint (server_total).
+
+These are all names, so you do not have to use global, all etc, you can use any name you want as long as they follow the pattern of uniqueness described.
+
 
 0) Imports and limiter initialization:
 

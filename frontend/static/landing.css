@@ -1,0 +1,690 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #4285f4 0%, #168dfd 100%);
+    min-height: 100vh;
+    color: #333;
+    overflow-x: hidden;
+}
+
+/* Main Container for Split Screen */
+.main-container {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Landing Content (Left Side) */
+.landing-content {
+    flex: 1;
+    min-width: 100%;
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.main-container.split-view .landing-content {
+    min-width: 60%;
+    flex: 0 0 60%;
+}
+
+/* Separator - 80 degree angle inclined to the right */
+.separator {
+    width: 0;
+    height: 100%;
+    position: relative;
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    background: linear-gradient(135deg, #4285f4 0%, #168dfd 100%);
+    /* Use skewX to create the 80-degree angle (10 degrees from vertical) */
+    transform: skewX(-10deg);
+}
+
+.main-container.split-view .separator {
+    width: 80px;
+    opacity: 1;
+}
+
+/* Auth Content (Right Side) */
+.auth-content-side {
+    flex: 0 0 0%;
+    min-width: 0;
+    overflow: hidden;
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+}
+
+.main-container.split-view .auth-content-side {
+    flex: 0 0 40%;
+    min-width: 40%;
+    opacity: 1;
+}
+
+.auth-content-side .auth-card {
+    transform: translateX(50px);
+    opacity: 0;
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.3s;
+}
+
+.main-container.split-view .auth-content-side .auth-card {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+
+/* ==================== LANDING PAGE ==================== */
+
+.landing-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #4285f4 0%, #168dfd 100%);
+}
+
+.landing-header {
+    padding: 20px 40px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-icon {
+    width: 48px;
+    height: 48px;
+    background: white;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4285f4;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.logo-text {
+    font-size: 24px;
+    font-weight: 700;
+    color: white;
+    letter-spacing: -0.5px;
+}
+
+.landing-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+}
+
+.main-container.split-view .landing-main {
+    padding: 40px 20px;
+}
+
+.hero-section {
+    text-align: center;
+    max-width: 800px;
+    margin-bottom: 80px;
+    animation: fadeInUp 0.8s ease-out;
+}
+
+.main-container.split-view .hero-section {
+    margin-bottom: 40px;
+    max-width: 100%;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.hero-title {
+    font-size: 56px;
+    font-weight: 800;
+    color: white;
+    margin-bottom: 24px;
+    line-height: 1.2;
+    letter-spacing: -1px;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.main-container.split-view .hero-title {
+    max-width: 800px;
+}
+
+.hero-subtitle {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 40px;
+    line-height: 1.6;
+    font-weight: 400;
+    /* Fixed width to prevent text wrapping changes */
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Maintain same width in split view - only position changes */
+.main-container.split-view .hero-subtitle {
+    max-width: 700px;
+}
+
+.cta-button {
+    background: white;
+    color: #3f8efd;
+    border: none;
+    padding: 18px 48px;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.cta-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+    background: #f8f9ff;
+}
+
+.cta-button:active {
+    transform: translateY(0);
+}
+
+.features-section {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    max-width: 1200px;
+    width: 100%;
+    animation: fadeInUp 0.8s ease-out 0.2s both;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+/* Stage 1: Compress with landing content (keep 4x1 grid, maintain visibility) */
+.main-container.split-view .features-section {
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 600px;
+    gap: 12px;
+    opacity: 1;
+}
+
+/* Stage 2: Fade out before grid change - smooth 0.5s transition */
+.main-container.split-view.grid-transition .features-section {
+    opacity: 0;
+}
+
+/* Stage 3: Change to 2x2 grid and fade back in - smooth 0.5s transition */
+.main-container.split-view.grid-changed .features-section {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 600px;
+    gap: 20px;
+    opacity: 1;
+}
+
+.feature-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    will-change: transform;
+    /* Fixed dimensions to prevent content reflow */
+    min-width: 250px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+.feature-icon {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, #3f8efd 0%, #168dfd 100%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    color: white;
+    flex-shrink: 0;
+}
+
+.feature-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 12px;
+    min-height: 28px;
+    line-height: 1.4;
+}
+
+.feature-description {
+    font-size: 15px;
+    color: #666;
+    line-height: 1.6;
+    min-height: 72px;
+}
+
+.landing-footer {
+    padding: 24px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* ==================== AUTH PAGE ==================== */
+
+.auth-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    max-width: 480px;
+    width: 90%;
+    overflow: hidden;
+}
+
+.auth-header {
+    background: linear-gradient(135deg, #3f8efd 0%, #168dfd 100%);
+    padding: 40px 32px;
+    text-align: center;
+    color: white;
+}
+
+.auth-logo {
+    width: 64px;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    color: white;
+}
+
+.auth-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+}
+
+.auth-subtitle {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 400;
+}
+
+.auth-content {
+    padding: 40px 32px;
+}
+
+.welcome-text {
+    font-size: 24px;
+    font-weight: 700;
+    color: #333;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.connect-text {
+    font-size: 15px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.oauth-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.oauth-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border: 2px solid #e0e0e0;
+    background: white;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.oauth-btn:hover {
+    background: #f8f9fa;
+    border-color: #d0d0d0;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.oauth-btn:active {
+    transform: translateY(0);
+}
+
+.divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 24px 0;
+    color: #999;
+    font-size: 14px;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.divider span {
+    padding: 0 16px;
+}
+
+.auth-tabs {
+    display: flex;
+    background: #f5f5f5;
+    border-radius: 8px;
+    padding: 4px;
+    margin-bottom: 24px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: #666;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.auth-tab.active {
+    background: white;
+    color: #3f8efd;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.form-group input {
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    transition: all 0.2s ease;
+    background: #f8f9fa;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #3f8efd;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(63, 142, 253, 0.1);
+}
+
+.password-input-wrapper {
+    position: relative;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+}
+
+.toggle-password:hover {
+    color: #3f8efd;
+}
+
+.form-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: -8px;
+}
+
+.forgot-password {
+    font-size: 14px;
+    color: #3f8efd;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+.forgot-password:hover {
+    color: #168dfd;
+    text-decoration: underline;
+}
+
+.submit-btn {
+    padding: 14px 24px;
+    background: linear-gradient(135deg, #3f8efd 0%, #168dfd 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(63, 142, 253, 0.3);
+}
+
+.submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(63, 142, 253, 0.4);
+}
+
+.submit-btn:active {
+    transform: translateY(0);
+}
+
+.auth-footer {
+    padding: 24px 32px;
+    background: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+}
+
+.provider-links {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 16px;
+}
+
+.provider-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #666;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+.provider-link:hover {
+    color: #333;
+}
+
+.legal-links {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: #999;
+}
+
+.legal-links a {
+    color: #666;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.legal-links a:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+
+    /* Stack split-screen vertically on tablets and mobile */
+    .main-container.split-view {
+        flex-direction: column;
+    }
+
+    .main-container.split-view .landing-content {
+        min-width: 100%;
+        flex: 1;
+    }
+
+    .main-container.split-view .separator {
+        width: 100%;
+        height: 30px;
+        transform: skewY(-2deg);
+    }
+
+    .main-container.split-view .auth-content-side {
+        min-width: 100%;
+        flex: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 40px;
+    }
+
+    .hero-subtitle {
+        font-size: 18px;
+    }
+
+    /* 2 columns on tablets */
+    .features-section {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+
+    /* Already 2x2 in split view - skip compression stage */
+    .main-container.split-view .features-section,
+    .main-container.split-view.grid-changed .features-section {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .auth-content {
+        padding: 32px 24px;
+    }
+
+    .landing-header {
+        padding: 16px 20px;
+    }
+
+    .landing-main {
+        padding: 40px 20px;
+    }
+
+    .hero-section {
+        margin-bottom: 40px;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-title {
+        font-size: 32px;
+    }
+
+    .cta-button {
+        padding: 16px 32px;
+        font-size: 16px;
+    }
+
+    .auth-card {
+        width: 95%;
+    }
+
+    /* Single column on small phones */
+    .features-section {
+        grid-template-columns: 1fr;
+    }
+
+    .main-container.split-view .features-section,
+    .main-container.split-view.grid-changed .features-section {
+        grid-template-columns: 1fr;
+        max-width: 100%;
+    }
+}
