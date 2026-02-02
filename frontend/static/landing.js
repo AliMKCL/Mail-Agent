@@ -71,22 +71,93 @@ togglePassword.addEventListener('click', () => {
 });
 
 // Form submission
-authForm.addEventListener('submit', (e) => {
+authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    if (isSignIn) {
-        console.log('Signing in with:', email);
-        // Add your sign-in logic here
-        // For now, redirect to the main app
-        window.location.href = 'templates/index.html';
-    } else {
-        console.log('Signing up with:', email);
-        // Add your sign-up logic here
-        // For now, redirect to the main app
-        window.location.href = 'templates/index.html';
+    // Disable submit button during request
+    submitBtn.disabled = true;
+    submitBtn.textContent = isSignIn ? 'Signing in...' : 'Signing up...';
+
+    try {
+        if (isSignIn) {
+            // Sign-in API call
+            console.log('Attempting sign-in with:', email);
+            const response = await fetch('http://localhost:8000/api/auth/signin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password
+                })
+            });
+
+            console.log('Response status:', response.status);
+            console.log('Response ok:', response.ok);
+
+            const data = await response.json();
+            console.log('Response data:', data);
+
+            if (response.ok) {
+                console.log('Sign-in successful:', data);
+                // Store token if your backend returns one
+                if (data.token) {
+                    localStorage.setItem('authToken', data.token);
+                }
+                // Redirect to main app
+                console.log('Redirecting to templates/main.html');
+                window.location.href = 'templates/main.html';
+            } else {
+                console.error('Sign-in failed:', data.message);
+                alert(data.message || 'Sign-in failed. Please try again.');
+            }
+        } else {
+            // Sign-up API call
+            const response = await fetch('http://localhost:8000/api/auth/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                console.log('Sign-up successful:', data);
+                // Store email_account_id for use in the main app
+                if (data.email_account_id) {
+                    localStorage.setItem('email_account_id', data.email_account_id);
+                }
+                // Store account_id as well
+                if (data.account_id) {
+                    localStorage.setItem('account_id', data.account_id);
+                }
+                // Store token if your backend returns one
+                if (data.token) {
+                    localStorage.setItem('authToken', data.token);
+                }
+                // Redirect to main app
+                window.location.href = 'templates/main.html';
+            } else {
+                console.error('Sign-up failed:', data.message);
+                alert(data.message || 'Sign-up failed. Please try again.');
+            }
+        }
+    } catch (error) {
+        console.error('Authentication error:', error);
+        alert('An error occurred. Please try again.');
+    } finally {
+        // Re-enable submit button
+        submitBtn.disabled = false;
+        submitBtn.textContent = isSignIn ? 'Sign In' : 'Sign Up';
     }
 });
 

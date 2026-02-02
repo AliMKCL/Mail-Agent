@@ -6,6 +6,7 @@ Provides REST API endpoints to serve email data and static files.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from datetime import datetime, time, timedelta
@@ -43,6 +44,22 @@ limiter = RateLimiterClient("http://localhost:8002")
 # Initialize FastAPI app
 app = FastAPI(title="Gmail Agent", description="Web interface for Gmail email management")
 
+# Add CORS middleware to allow requests from frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Frontend HTTP server
+        "http://localhost:8080", 
+        "http://localhost:8000", 
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:3000"   # Frontend HTTP server (alternative)
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+
 # Database setup
 db_manager = DatabaseManager()
 
@@ -59,6 +76,15 @@ USER_ID_FOR_CALENDAR = 1
 class UserCreateRequest(BaseModel):
     email: str
     name: Optional[str] = None
+
+class SignInRequest(BaseModel):
+    email: str
+    password: str
+
+class SignUpRequest(BaseModel):
+    email: str
+    password: str
+
 
 # Use absolute paths so StaticFiles works even if the process cwd differs
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,35 +104,97 @@ if os.path.isdir(templates_dir):
 # This endpoint is called when the main page is loaded.
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    """Serve the main HTML page using an absolute path file response"""
-    # This endpoint serves the main HTML page.
+    """Serve the landing HTML page using an absolute path file response"""
+    # This endpoint serves the landing page.
 
-    index_path = os.path.join(templates_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return HTMLResponse("<h1>index.html not found</h1>", status_code=500)
+    frontend_dir = os.path.join(BASE_DIR, "../frontend")
+    landing_path = os.path.join(frontend_dir, "landing.html")
+    if os.path.exists(landing_path):
+        return FileResponse(landing_path)
+    return HTMLResponse("<h1>landing.html not found</h1>", status_code=500)
 
-# This endpoint is called when the user fetches emails for a specific user.
-@app.get("/api/emails")
-async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
+# Authentication endpoints
+@app.post("/api/auth/signin")
+async def sign_in(credentials: SignInRequest):
     """
-    Get emails for a specific user from database
+    Handle user sign-in from landing page
+    Validates credentials and returns success/failure
+    """
+    try:
+        
+        # Placeholder credentials validation
+        if credentials.email == "test@gmail.com" and credentials.password == "t":
+            return {
+                "status": "success",
+                "message": "Sign-in successful"
+            }
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sign-in error: {str(e)}")
+
+@app.post("/api/auth/signup")
+async def sign_up(credentials: SignUpRequest):
+    """
+    Handle user sign-up from landing page
+    Creates new account and email account
+    """
+    try:
+        email = credentials.email
+        password = credentials.password
+        
+        # TODO: Hash the password here (you'll add this yourself)
+        # For now, using placeholder - REPLACE THIS!
+        password_hash = "PLACEHOLDER_HASH"  # <-- ADD YOUR HASHING HERE
+        
+        # Create main account for login
+        account = db_manager.get_or_create_account(email, password_hash)
+        
+        # Create email account for this Gmail address
+        email_account = db_manager.get_or_create_email_account(
+            account_id=account.id,
+            email=email,
+            provider='gmail',
+            is_primary=True
+        )
+
+        # Note: OAuth flow happens separately after sign-up
+        # User will connect their Gmail account from the dashboard
+        
+        return {
+            "status": "success",
+            "message": "Sign-up successful",
+            "account_id": account.id,
+            "email_account_id": email_account.id
+        }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sign-up error: {str(e)}")
+
+
+# This endpoint is called when the user fetches emails for a specific email account.
+@app.get("/api/emails")
+async def get_emails(email_account_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
+    """
+    Get emails for a specific email account from database
     Returns email data formatted for frontend display
     """
     try:
-        if user_id is None:
-            raise HTTPException(status_code=400, detail="user_id parameter is required")
+        if email_account_id is None:
+            raise HTTPException(status_code=400, detail="email_account_id parameter is required")
         
 
-        # ==================== RATE LIMITED EMAILS REFRESH / user scope ====================
+        # ==================== RATE LIMITED EMAILS REFRESH / email account scope ====================
         
-        """result = limiter.check(          # This version works per user.
-            scope="user",
-            identifier=str(user_id),
-            endpoint="api/emails",
-        )"""
-
-        result = limiter.check(             # Limit is still default?
+        result = limiter.check(
             scope="global",
             identifier="all",
             endpoint="api/emails",
@@ -127,8 +215,8 @@ async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dic
             )
         # =====================================================================
 
-        # Fetch stored emails for the specified user
-        stored_emails = db_manager.get_user_emails(user_id, limit=limit)
+        # Fetch stored emails for the specified email account
+        stored_emails = db_manager.get_email_account_emails(email_account_id, limit=limit)
         
         # Format emails for API response
         emails = []
@@ -152,9 +240,10 @@ async def get_emails(user_id: Optional[int] = None, limit: int = 50) -> List[Dic
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching emails: {str(e)}")
 
+
 # This endpoint is called when the sync button is pressed to fetch new emails.
 @app.get("/api/sync")
-async def sync_emails(user_id: Optional[int] = None):
+async def sync_emails(email_account_id: Optional[int] = None):
     """
     Trigger email synchronization from Gmail
     This endpoint can be called to fetch new emails
@@ -185,14 +274,14 @@ async def sync_emails(user_id: Optional[int] = None):
             )
         # ================================================================
     
-        if user_id is None:
-            raise HTTPException(status_code=400, detail="user_id parameter is required")
+        if email_account_id is None:
+            raise HTTPException(status_code=400, detail="email_account_id parameter is required")
         
         # Create Gmail service (this handles OAuth flow if needed)
-        service = get_service(user_id)
+        service = get_service(email_account_id)
         
         # Get the date of the most recent email we have stored
-        latest_date = db_manager.get_latest_email_date(user_id)
+        latest_date = db_manager.get_latest_email_date(email_account_id)
         
 
         flag = False
@@ -227,16 +316,12 @@ async def sync_emails(user_id: Optional[int] = None):
         
         # Fetch email IDs from Gmail Primary inbox only
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
-        ids = list_message_ids(service, query=final_query, max_results=300)
+        ids = list_message_ids(service, query=final_query, max_results=150)
         print(f"DEBUG: Found {len(ids)} email IDs")
-
-        # BOTTLENECK START
 
         if ids:
             # Prepare and save email data
 
-            # BOTTLENECK 1
-            #email_data = prepare_email_data(service, ids)   # Dict of full email data
             """
             currTime = datetime.now()
             email_data = prepare_email_data(service, ids)
@@ -249,7 +334,7 @@ async def sync_emails(user_id: Optional[int] = None):
             try: 
                 response = requests.post("http://localhost:8001/fetch-emails",
                     json={
-                        "user_id": user_id,
+                        "email_account_id": email_account_id,
                         "mail_ids": ids
                     },
                     timeout=1000
@@ -275,7 +360,7 @@ async def sync_emails(user_id: Optional[int] = None):
                 print(f"Connection error to Go server: {e}")
                 print("Using Python approach")
                 email_data = prepare_email_data(service, ids)
-                saved_emails = db_manager.save_emails(user_id, email_data)
+                saved_emails = db_manager.save_emails(email_account_id, email_data)
                 await embed_and_store(saved_emails)
 
             except Exception as e:
@@ -322,38 +407,53 @@ async def sync_emails(user_id: Optional[int] = None):
 async def get_users():
     """Get all users from the database"""
     try:
-        users = db_manager.get_all_users()
-        return [
-            {
+        users = db_manager.get_all_email_accounts()
+        result = []
+        for user in users:
+            # Check if user has OAuth credentials
+            has_credentials = False
+            try:
+                creds = db_manager.get_email_account_credentials(user.id)
+                has_credentials = creds is not None and creds.valid
+            except:
+                pass
+            
+            result.append({
                 "id": user.id,
+                "account_id": user.account_id,
                 "email": user.email,
-                "name": user.name,
+                "provider": user.provider,
+                "is_primary": user.is_primary,
+                "has_oauth_credentials": has_credentials,
                 "created_at": user.created_at.isoformat()
-            }
-            for user in users
-        ]
+            })
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
 
-# This endpoint is called to fetch detailed information about a specific user.
-@app.get("/api/user/{user_id}")
-async def get_user_info(user_id: int):
-    """Get specific user information"""
+
+# This endpoint is called to fetch detailed information about a specific email account.
+@app.get("/api/email-account/{email_account_id}")
+async def get_email_account_info(email_account_id: int):
+    """Get specific email account information"""
     try:
-        from backend.databases.database import User
+        from backend.databases.database import EmailAccount
         with db_manager.get_session() as session:
-            user = session.query(User).filter_by(id=user_id).first()
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
+            email_account = session.query(EmailAccount).filter_by(id=email_account_id).first()
+            if not email_account:
+                raise HTTPException(status_code=404, detail="Email account not found")
             
             return {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name,
-                "created_at": user.created_at.isoformat()
+                "id": email_account.id,
+                "account_id": email_account.account_id,
+                "email": email_account.email,
+                "provider": email_account.provider,
+                "is_primary": email_account.is_primary,
+                "created_at": email_account.created_at.isoformat()
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching user info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching email account info: {str(e)}")
+
 
 # This endpoint is called when creating a new user and initiating the OAuth flow.
 @app.post("/api/users")
@@ -384,13 +484,13 @@ async def create_user_and_auth(user_data: UserCreateRequest):
 
 # This endpoint is called to fetch calendar events for a user within a date range.
 @app.get("/api/calendar/events")
-async def get_calendar_events(user_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+async def get_calendar_events(email_account_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
-    Get Google Calendar events for a specific user within a date range
+    Get Google Calendar events for a specific email account within a date range
     """
     try:
-        if user_id is None:
-            raise HTTPException(status_code=400, detail="user_id parameter is required")
+        if email_account_id is None:
+            raise HTTPException(status_code=400, detail="email_account_id parameter is required")
         
         # Get calendar service
         try:
@@ -401,7 +501,7 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
         
         if not service:
             if "Authentication required" in str(error):
-                auth_url, state = authenticate_google_calendar(user_id)
+                auth_url, state = authenticate_google_calendar(email_account_id)
                 if auth_url:
                     return {
                         "status": "auth_required",
@@ -409,6 +509,7 @@ async def get_calendar_events(user_id: Optional[int] = None, start_date: Optiona
                         "message": "Please authenticate with Google Calendar"
                     }
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
+
         
         if not start_date:
             # Display events from X months ago to now. 
@@ -507,11 +608,11 @@ async def create_calendar_event(request_data: dict):
             )
         # =====================================================================
 
-        user_id = request_data.get('user_id')
+        email_account_id = request_data.get('email_account_id')
         event_data = request_data.get('event_data', {})
         
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required")
+        if not email_account_id:
+            raise HTTPException(status_code=400, detail="email_account_id is required")
         
         # Get calendar service
         try:
@@ -603,11 +704,11 @@ async def update_calendar_event(event_id: str, request_data: dict):
     Update an existing calendar event
     """
     try:
-        user_id = request_data.get('user_id')
+        email_account_id = request_data.get('email_account_id')
         event_data = request_data.get('event_data', {})
         
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required")
+        if not email_account_id:
+            raise HTTPException(status_code=400, detail="email_account_id is required")
         
         # Get calendar service
         service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
@@ -676,13 +777,12 @@ async def update_calendar_event(event_id: str, request_data: dict):
 
 # This endpoint is called when deleting a calendar event.
 @app.delete("/api/calendar/events/{event_id}")
-async def delete_calendar_event(event_id: str, user_id: int):
-    """
-    Delete a calendar event
-    """
+async def delete_calendar_event(event_id: str, email_account_id: int):
+    """Delete a Google Calendar event"""
     try:
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        if not email_account_id:
+            raise HTTPException(status_code=400, detail="email_account_id is required")
         
         # Get calendar service
         service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
@@ -704,10 +804,29 @@ async def delete_calendar_event(event_id: str, user_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting calendar event: {str(e)}")
 
+# Initiate OAuth flow for an email account
+@app.get("/api/auth/google")
+async def initiate_google_oauth(email_account_id: int):
+    """Initiate OAuth flow for Google Calendar and Gmail"""
+    try:
+        # Use the setup_calendar function to initiate OAuth
+        auth_url, state = authenticate_google_calendar(email_account_id)
+        
+        if not auth_url:
+            raise HTTPException(status_code=500, detail=f"Failed to generate auth URL: {state}")
+        
+        return {
+            "status": "success",
+            "auth_url": auth_url,
+            "state": state
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error initiating OAuth: {str(e)}")
+
 # This endpoint is called during the OAuth callback after user authentication.
 @app.get("/oauth/callback")
 async def oauth_callback(code: str, state: Optional[str] = None):
-    """Handle OAuth callback for Google Calendar"""
+    """Handle OAuth callback for Google Calendar and Gmail"""
     try:
         flow = Flow.from_client_secrets_file('credentials.json', SCOPES)
         flow.redirect_uri = 'http://localhost:8000/oauth/callback'
@@ -716,23 +835,31 @@ async def oauth_callback(code: str, state: Optional[str] = None):
         flow.fetch_token(code=code)
         creds = flow.credentials
         
-        # Save credentials
-        user_id = state if state and state != 'default' else 'default'
-        token_file = f'token_{user_id}.pickle'
-        with open(token_file, 'wb') as token:
-            pickle.dump(creds, token)
+        # Save credentials to database
+        # State contains the email_account_id
+        if state and state.isdigit():
+            email_account_id = int(state)
+            db_manager.save_email_token(email_account_id, creds)
+            print(f"✅ OAuth credentials saved for email account {email_account_id}")
+        else:
+            print(f"⚠️  Warning: No valid email_account_id in state: {state}")
         
+        # Redirect back to main.html
         return HTMLResponse("""
         <html>
-            <head><title>Authorization Complete</title></head>
-            <body>
-                <h2>Authorization successful!</h2>
-                <p>You can now close this window and return to the application.</p>
+            <head>
+                <title>Authorization Complete</title>
                 <script>
+                    // Redirect to main.html after 2 seconds
                     setTimeout(function() {
-                        window.close();
-                    }, 3000);
+                        window.location.href = 'http://localhost:3000/templates/main.html';
+                    }, 2000);
                 </script>
+            </head>
+            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                <h2 style="color: #4CAF50;">✅ Authorization successful!</h2>
+                <p>Your Gmail account has been connected.</p>
+                <p>Redirecting you back to the app...</p>
             </body>
         </html>
         """)
@@ -777,16 +904,16 @@ async def check_calendar_status():
 
 # This endpoint is called to fetch Moodle calendar events from the subscribed calendar.
 @app.get("/api/calendar/moodle")
-async def get_moodle_calendar_events(user_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+async def get_moodle_calendar_events(email_account_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
     Get events from the subscribed Moodle calendar.
     Returns events grouped by date, marked with category 'Moodle'.
     """
     try:
-        if user_id is None:
-            user_id = USER_ID_FOR_CALENDAR
+        if email_account_id is None:
+            email_account_id = USER_ID_FOR_CALENDAR
 
-        result = get_moodle_events_for_api(user_id, start_date, end_date)
+        result = get_moodle_events_for_api(email_account_id, start_date, end_date)
 
         if "error" in result and result.get("events") == {}:
             raise HTTPException(status_code=500, detail=result["error"])
@@ -960,14 +1087,14 @@ async def llm_query_endpoint(request_data: dict):
         from backend.llm_integration import process_llm_query
 
         query = request_data.get("query")
-        user_id = request_data.get("user_id")
+        email_account_id = request_data.get("email_account_id")
         use_openai = request_data.get("use_openai", True)
 
         if not query:
             raise HTTPException(status_code=400, detail="query parameter is required")
 
         # Process the query through LLM with tool access
-        result = await process_llm_query(query, user_id=user_id, use_openai=use_openai)
+        result = await process_llm_query(query, user_id=email_account_id, use_openai=use_openai)
 
         if result.get("status") == "error":
             raise HTTPException(status_code=500, detail=result.get("error"))

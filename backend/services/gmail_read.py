@@ -27,7 +27,7 @@ from google.auth.transport.requests import Request  # helper for making HTTP req
 from googleapiclient.discovery import build  # constructs API client objects (Gmail API client)
 
 # Local database imports
-from ..databases.database import DatabaseManager, User  # database models and utilities
+from ..databases.database import DatabaseManager, EmailAccount  # database models and utilities
 
 from ..utilities.reauth_user import reauthenticate_user_token_failure
 
@@ -44,46 +44,49 @@ OAUTH_PORT = 8080  # ensure http://localhost:8080/ is registered in the OAuth cl
 # Database setup
 db_manager = DatabaseManager()
 
-def get_service(user_id: int):
+def get_service(email_account_id: int):
     """
     Create an authorized Gmail API client using database-stored credentials.
     - Reuses stored credentials from database if present (auto-refreshes access token).
     - If no token or invalid, runs OAuth flow and saves to database.
+    
+    Args:
+        email_account_id: The ID of the EmailAccount (not the Account/user)
     """
     creds: Optional[Credentials] = None
 
-    # 1) Load previously saved user credentials from database.
-    creds = db_manager.get_user_credentials(user_id)
+    # 1) Load previously saved email account credentials from database.
+    creds = db_manager.get_email_account_credentials(email_account_id)
 
     # 2) If no valid creds, do the OAuth dance.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:  # Token is outdated and refresh token is available
             try:
-                print(f"🔄 Attempting to refresh expired token for user {user_id}...")
+                print(f"Attempting to refresh expired token for email account {email_account_id}...")
                 # Refresh silently using the refresh token.
                 creds.refresh(Request())
                 # Save refreshed credentials back to database
-                db_manager.save_user_token(user_id, creds)
-                print(f"✅ Token refreshed successfully for user {user_id}")
+                db_manager.save_email_token(email_account_id, creds)
+                print(f"Token refreshed successfully for email account {email_account_id}")
             except Exception as refresh_error:
-                print(f"❌ Token refresh failed for user {user_id}: {refresh_error}")
+                print(f"Token refresh failed for email account {email_account_id}: {refresh_error}")
                 print(f"   This usually means the refresh token is expired or revoked.")
                 print(f"   Triggering re-authentication...")
                 
                 # Import and call the re-authentication function
-                creds = reauthenticate_user_token_failure(user_id)
+                creds = reauthenticate_user_token_failure(email_account_id)
                 
                 if not creds:
-                    raise Exception(f"Re-authentication failed for user {user_id}. Cannot proceed without valid credentials.")
+                    raise Exception(f"Re-authentication failed for email account {email_account_id}. Cannot proceed without valid credentials.")
         else:
-            print(f"⚠️  No valid credentials found for user {user_id}")
+            print(f"No valid credentials found for email account {email_account_id}")
             print(f"   Triggering initial authentication...")
             
             # Import and call the re-authentication function (works for initial auth too)
-            creds = reauthenticate_user_token_failure(user_id)
+            creds = reauthenticate_user_token_failure(email_account_id)
             
             if not creds:
-                raise Exception(f"Authentication failed for user {user_id}. Cannot proceed without valid credentials.")
+                raise Exception(f"Authentication failed for email account {email_account_id}. Cannot proceed without valid credentials.")
 
     # 4) Build the Gmail client object with authorized credentials.
     return build("gmail", "v1", credentials=creds)
@@ -228,28 +231,28 @@ def prepare_email_data(service, message_ids: List[str]) -> List[Dict]:
     
     return email_data
 
-# For testing: Run this script directly to read emails for all users in the database
+# For testing: Run this script directly to read emails for all email accounts in the database
 def main():
-    # 1) Get all users from database
-    users = db_manager.get_all_users()
+    # 1) Get all email accounts from database
+    email_accounts = db_manager.get_all_email_accounts()
     
-    if not users:
-        print("No users found in database. Please add users first or run the web app to create OAuth credentials.")
+    if not email_accounts:
+        print("No email accounts found in database. Please add email accounts first or run the web app to create OAuth credentials.")
         return
     
-    print(f"Found {len(users)} user(s) in database:")
-    for user in users:
-        print(f"  - {user.email} (ID: {user.id})")
+    print(f"Found {len(email_accounts)} email account(s) in database:")
+    for email_account in email_accounts:
+        print(f"  - {email_account.email} (ID: {email_account.id})")
     
-    # 2) Process emails for each user
-    for user in users:
+    # 2) Process emails for each email account
+    for email_account in email_accounts:
         print(f"\n{'='*80}")
-        print(f"Processing emails for: {user.email} (ID: {user.id})")
+        print(f"Processing emails for: {email_account.email} (ID: {email_account.id})")
         print(f"{'='*80}")
         
         try:
             # Create the Gmail API client object (handles OAuth if needed)
-            service = get_service(user.id)
+            service = get_service(email_account.id)
             
             # Fetch email IDs from Gmail Primary inbox (matches Gmail dashboard)
             print("Fetching emails from Gmail Primary inbox...")
@@ -261,7 +264,7 @@ def main():
             if ids:
                 print("Processing and saving emails to database...")
                 email_data = prepare_email_data(service, ids)
-                saved_emails = db_manager.save_emails(user.id, email_data)
+                saved_emails = db_manager.save_emails(email_account.id, email_data)
                 print(f"Saved {len(saved_emails)} new emails to database")
             
             # Display emails from database
@@ -269,7 +272,7 @@ def main():
             print("EMAILS FROM DATABASE:")
             print(f"{'-'*60}")
             
-            stored_emails = db_manager.get_user_emails(user.id, limit=50)
+            stored_emails = db_manager.get_email_account_emails(email_account.id, limit=50)
             
             for i, email in enumerate(stored_emails, start=1):
                 print(f"\n[{i}] ID: {email.message_id}")
@@ -285,10 +288,10 @@ def main():
                 body = email.body_text or email.body_html or ""
                 print(body[:500] + ("..." if len(body) > 500 else ""))
             
-            print(f"\nTotal emails in database for user {user.email}: {len(stored_emails)}")
+            print(f"\nTotal emails in database for email account {email_account.email}: {len(stored_emails)}")
             
         except Exception as e:
-            print(f"Error processing emails for user {user.email}: {e}")
+            print(f"Error processing emails for email account {email_account.email}: {e}")
             continue
 
 if __name__ == "__main__":

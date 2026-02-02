@@ -18,13 +18,13 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar'
 ]
 
-def authenticate_calendar(user_id=1):
-    """Authenticate user for Google Calendar access"""
+def authenticate_calendar(email_account_id=1):
+    """Authenticate email account for Google Calendar access"""
     db_manager = DatabaseManager()
     creds = None
     
     # Check if we already have saved credentials in database
-    creds = db_manager.get_user_credentials(user_id)
+    creds = db_manager.get_email_account_credentials(email_account_id)
 
     # Check if credentials are valid and include the required scopes
     if creds and creds.valid:
@@ -36,11 +36,11 @@ def authenticate_calendar(user_id=1):
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
-                print(f"🔄 Attempting to refresh expired token for user {user_id}...")
+                print(f"🔄 Attempting to refresh expired token for email account {email_account_id}...")
                 creds.refresh(Request())
                 print("✅ Credentials refreshed successfully!")
                 # Save refreshed credentials back to database
-                db_manager.save_user_token(user_id, creds)
+                db_manager.save_email_token(email_account_id, creds)
             except Exception as e:
                 print(f"❌ Error refreshing credentials: {e}")
                 print("   Triggering re-authentication...")
@@ -54,52 +54,52 @@ def authenticate_calendar(user_id=1):
             
             # Use the centralized re-authentication function
             
-            creds = reauthenticate_user_token_failure(user_id)
+            creds = reauthenticate_user_token_failure(email_account_id)
             
             if not creds:
                 print("❌ Re-authentication failed. Cannot proceed without valid credentials.")
                 return False
                 
-            print(f"✅ Credentials saved to database for user ID {user_id}")
+            print(f"✅ Credentials saved to database for email account ID {email_account_id}")
     
     return True
 
-def get_calendar_service(user_id=None):
-    """Get Google Calendar service for the user"""
+def get_calendar_service(email_account_id=None):
+    """Get Google Calendar service for the email account"""
     try:
-        if user_id is None:
-            return None, "User ID is required"
+        if email_account_id is None:
+            return None, "Email account ID is required"
             
         db_manager = DatabaseManager()
 
-        creds = db_manager.get_user_credentials(user_id)
+        creds = db_manager.get_email_account_credentials(email_account_id)
         
         # Check if credentials exist and are valid
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
-                    print(f"🔄 Attempting to refresh expired token for user {user_id}...")
+                    print(f"🔄 Attempting to refresh expired token for email account {email_account_id}...")
                     creds.refresh(Request())
                     # Save refreshed credentials back to database
-                    db_manager.save_user_token(user_id, creds)
-                    print(f"✅ Token refreshed successfully for user {user_id}")
+                    db_manager.save_email_token(email_account_id, creds)
+                    print(f"✅ Token refreshed successfully for email account {email_account_id}")
                 except Exception as e:
-                    print(f"❌ Error refreshing credentials for user {user_id}: {e}")
+                    print(f"❌ Error refreshing credentials for email account {email_account_id}: {e}")
                     print("   Triggering re-authentication...")
                     
                     # Use centralized re-authentication
-                    creds = reauthenticate_user_token_failure(user_id)
+                    creds = reauthenticate_user_token_failure(email_account_id)
                     
                     if not creds:
                         return None, "Re-authentication failed"
             else:
-                print(f"⚠️  No valid credentials for user {user_id}")
+                print(f"⚠️  No valid credentials for email account {email_account_id}")
                 return None, "Authentication required"
         
         # Check if credentials include the Calendar scope
         if creds and creds.scopes:
             if 'https://www.googleapis.com/auth/calendar' not in creds.scopes:
-                print(f"Calendar scope missing for user {user_id}. Current scopes: {creds.scopes}")
+                print(f"Calendar scope missing for user {email_account_id}. Current scopes: {creds.scopes}")
                 return None, "Authentication required - Calendar scope missing"
         else:
             return None, "Authentication required - No scopes found"
@@ -110,7 +110,7 @@ def get_calendar_service(user_id=None):
         # Save credentials after building service in case they were auto-refreshed
         # Google's library may refresh tokens when building the service
         try:
-            db_manager.save_user_token(user_id, creds)
+            db_manager.save_email_token(email_account_id, creds)
         except Exception as save_error:
             print(f"⚠️  Warning: Could not save potentially refreshed credentials: {save_error}")
 
@@ -120,17 +120,17 @@ def get_calendar_service(user_id=None):
         print(f"Error getting calendar service: {e}")
         return None, str(e)
 
-def authenticate_google_calendar(user_id=None):
+def authenticate_google_calendar(email_account_id=None):
     """Initiate OAuth flow for Google Calendar"""
     try:
         flow = Flow.from_client_secrets_file('credentials.json', SCOPES)
-        flow.redirect_uri = 'http://localhost:8080/oauth/callback'  # Updated to match setup port
+        flow.redirect_uri = 'http://localhost:8000/oauth/callback'  # FastAPI backend port
         
         auth_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
             prompt='consent',  # Force consent to get refresh_token
-            state=str(user_id) if user_id else 'default'
+            state=str(email_account_id) if email_account_id else 'default'
         )
         
         return auth_url, state

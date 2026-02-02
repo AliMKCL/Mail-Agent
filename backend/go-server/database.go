@@ -7,24 +7,24 @@ import (
 )
 
 // Adds the mails into the database.
-func addMailToDB(email map[string]interface{}, userID int, db *sql.DB) map[string]interface{} {
+func addMailToDB(email map[string]interface{}, emailAccountID int, db *sql.DB) map[string]interface{} {
 
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM emails WHERE message_id = ? AND user_id = ?", email["message_id"], userID).Scan(&count)
+	err := db.QueryRow("SELECT COUNT(*) FROM emails WHERE message_id = ? AND email_account_id = ?", email["message_id"], emailAccountID).Scan(&count)
 	if err != nil {
 		fmt.Printf("Error checking duplicate for message_id %s: %v\n", email["message_id"], err)
 		panic(err)
 	}
 	if count > 0 { // Duplicate found, skip insertion
-		fmt.Printf("Email with message_id %s already exists for user_id %d, skipping insertion.\n", email["message_id"], userID)
+		fmt.Printf("Email with message_id %s already exists for email_account_id %d, skipping insertion.\n", email["message_id"], emailAccountID)
 		return nil
 	}
 
 	// Otherwise insert into the db:
 	// Insert new email (10 values, 10 placeholders)
 	// Use SQLite datetime format to match Python's SQLAlchemy: YYYY-MM-DD HH:MM:SS.ffffff
-	_, err = db.Exec("INSERT INTO emails (user_id, message_id, subject, sender, recipient, date_sent, snippet, body_text, body_html, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		userID,
+	_, err = db.Exec("INSERT INTO emails (email_account_id, message_id, subject, sender, recipient, date_sent, snippet, body_text, body_html, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		emailAccountID,
 		email["message_id"],
 		email["subject"],
 		email["sender"],

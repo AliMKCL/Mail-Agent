@@ -33,8 +33,8 @@ const MaxWorkers int = 10
 const DBPath string = "../../gmail_agent.db" // Relative to go-server directory
 
 type messageIDs struct {
-	UserID  int      `json:"user_id"`
-	MailIDs []string `json:"mail_ids"`
+	EmailAccountID int      `json:"email_account_id"`
+	MailIDs        []string `json:"mail_ids"`
 }
 
 type Credentials struct {
@@ -72,7 +72,7 @@ func operateEmails(
 	}
 
 	// ================ Get credentails from the database ================
-	creds, err := getCredentials(ids.UserID)
+	creds, err := getCredentials(ids.EmailAccountID)
 	if err != nil {
 		http.Error(w, "Failed to get credentials", http.StatusInternalServerError)
 		return
@@ -87,7 +87,7 @@ func operateEmails(
 
 	// ================ Fetch emails & Add to DB ================
 	startTime := time.Now()
-	emails := fetchWorker(service, ids.MailIDs, ids.UserID) // Returns emails with a field for their embeddings.
+	emails := fetchWorker(service, ids.MailIDs, ids.EmailAccountID) // Returns emails with a field for their embeddings.
 	elapsedTime := time.Since(startTime)
 	fmt.Printf("Time taken to fetch emails and add to db: %s\n", elapsedTime)
 
@@ -116,7 +116,7 @@ func operateEmails(
 }
 
 // Fetches mails, adds to db and embeds them. Returns the mails.
-func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEmbedding {
+func fetchWorker(service *gmail.Service, ids []string, emailAccountID int) []EmailWithEmbedding {
 	var emails []map[string]interface{} // Slice of emails (with key string, value any / interface{})
 	var jobsChan = make(chan string, len(ids))
 
@@ -147,8 +147,8 @@ func fetchWorker(service *gmail.Service, ids []string, userID int) []EmailWithEm
 	go func() {
 		defer dbWg.Done()
 		for email := range emailsToWrite { // If no values here will simply wait / block.
-			newMail := addMailToDB(email, userID, db) // Add to db, get back the mail if new, else nil for duplicate.
-			newMails <- newMail                       // Add the newMails to buffered channel
+			newMail := addMailToDB(email, emailAccountID, db) // Add to db, get back the mail if new, else nil for duplicate.
+			newMails <- newMail                               // Add the newMails to buffered channel
 			emails = append(emails, email)
 		}
 	}()

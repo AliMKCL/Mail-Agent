@@ -36,19 +36,19 @@ OAUTH_PORT = 8080  # Must match the authorized redirect URI in Google Cloud Cons
 db_manager = DatabaseManager()
 
 
-def reauthenticate_user_token_failure(user_id: int) -> Optional[Credentials]:
+def reauthenticate_user_token_failure(email_account_id: int) -> Optional[Credentials]:
     """
-    Re-authenticate a user whose tokens have expired or been revoked.
+    Re-authenticate an email account whose tokens have expired or been revoked.
     
     This function is triggered when token refresh fails or tokens are invalid.
     It will:
-    1. Display a clear message to the user about why re-authentication is needed
+    1. Display a clear message about why re-authentication is needed
     2. Open the browser for OAuth consent flow
     3. Save the new credentials to the database
     4. Return the new credentials
     
     Args:
-        user_id: The database ID of the user to re-authenticate
+        email_account_id: The database ID of the email account to re-authenticate
         
     Returns:
         New Credentials object if successful, None if failed
@@ -56,7 +56,7 @@ def reauthenticate_user_token_failure(user_id: int) -> Optional[Credentials]:
     print("\n" + "="*80)
     print("🔐 RE-AUTHENTICATION REQUIRED")
     print("="*80)
-    print(f"User ID: {user_id}")
+    print(f"Email Account ID: {email_account_id}")
     print("\nYour Google OAuth tokens have expired or been revoked.")
     print("This can happen when:")
     print("  • Tokens have been inactive for 6+ months")
@@ -66,7 +66,7 @@ def reauthenticate_user_token_failure(user_id: int) -> Optional[Credentials]:
     print("="*80)
     
     try:
-        print(f"\nRe-authenticating user ID: {user_id}")
+        print(f"\nRe-authenticating email account ID: {email_account_id}")
         print("\n🌐 Opening browser for Google sign-in...")
         print("   Please complete the authorization in your browser.")
         print("   Make sure to:")
@@ -103,7 +103,7 @@ def reauthenticate_user_token_failure(user_id: int) -> Optional[Credentials]:
             print("   Consider revoking app access in Google Account settings and trying again.")
         
         # Save the new credentials to the database
-        db_manager.save_user_token(user_id, creds)
+        db_manager.save_email_token(email_account_id, creds)
         
         print("\n" + "="*80)
         print("✅ RE-AUTHENTICATION SUCCESSFUL")
@@ -130,62 +130,62 @@ def reauthenticate_user_token_failure(user_id: int) -> Optional[Credentials]:
         return None
 
 
-def force_reauth_for_user(user_id: int) -> bool:
+def force_reauth_for_email_account(email_account_id: int) -> bool:
     """
-    Manually trigger re-authentication for a specific user.
+    Manually trigger re-authentication for a specific email account.
     
-    This can be called directly to force a user to re-authenticate,
+    This can be called directly to force an email account to re-authenticate,
     even if their tokens appear valid.
     
     Args:
-        user_id: The database ID of the user to re-authenticate
+        email_account_id: The database ID of the email account to re-authenticate
         
     Returns:
         True if successful, False otherwise
     """
-    print(f"\n🔄 Forcing re-authentication for user ID: {user_id}")
+    print(f"\n🔄 Forcing re-authentication for email account ID: {email_account_id}")
     
-    creds = reauthenticate_user_token_failure(user_id)
+    creds = reauthenticate_user_token_failure(email_account_id)
     return creds is not None
 
 
-def reauth_all_users() -> dict:
+def reauth_all_email_accounts() -> dict:
     """
-    Re-authenticate all users in the database.
+    Re-authenticate all email accounts in the database.
     
     Useful for bulk re-authentication after scope changes or
-    when multiple users have expired tokens.
+    when multiple email accounts have expired tokens.
     
     Returns:
-        Dictionary with user_id as keys and success status as values
+        Dictionary with email_account_id as keys and success status as values
     """
-    users = db_manager.get_all_users()
+    email_accounts = db_manager.get_all_email_accounts()
     
-    if not users:
-        print("❌ No users found in database.")
+    if not email_accounts:
+        print("❌ No email accounts found in database.")
         return {}
     
     print(f"\n{'='*80}")
-    print(f"🔄 RE-AUTHENTICATING {len(users)} USER(S)")
+    print(f"🔄 RE-AUTHENTICATING {len(email_accounts)} EMAIL ACCOUNT(S)")
     print(f"{'='*80}\n")
     
     results = {}
     
-    for i, user in enumerate(users, 1):
-        print(f"\n[{i}/{len(users)}] Processing user: {user.email} (ID: {user.id})")
+    for i, email_account in enumerate(email_accounts, 1):
+        print(f"\n[{i}/{len(email_accounts)}] Processing email account: {email_account.email} (ID: {email_account.id})")
         
         try:
-            creds = reauthenticate_user_token_failure(user.id)
-            results[user.id] = creds is not None
+            creds = reauthenticate_user_token_failure(email_account.id)
+            results[email_account.id] = creds is not None
             
             if creds:
-                print(f"✅ Successfully re-authenticated {user.email}")
+                print(f"✅ Successfully re-authenticated {email_account.email}")
             else:
-                print(f"❌ Failed to re-authenticate {user.email}")
+                print(f"❌ Failed to re-authenticate {email_account.email}")
                 
         except Exception as e:
-            print(f"❌ Error re-authenticating {user.email}: {e}")
-            results[user.id] = False
+            print(f"❌ Error re-authenticating {email_account.email}: {e}")
+            results[email_account.id] = False
     
     # Summary
     successful = sum(1 for success in results.values() if success)
@@ -194,9 +194,9 @@ def reauth_all_users() -> dict:
     print(f"\n{'='*80}")
     print("📊 RE-AUTHENTICATION SUMMARY")
     print(f"{'='*80}")
-    print(f"Total users:  {len(results)}")
-    print(f"Successful:   {successful}")
-    print(f"Failed:       {failed}")
+    print(f"Total email accounts:  {len(results)}")
+    print(f"Successful:            {successful}")
+    print(f"Failed:                {failed}")
     print(f"{'='*80}\n")
     
     return results
@@ -205,24 +205,24 @@ def reauth_all_users() -> dict:
 # Command-line interface for manual re-authentication
 def main():
     """
-    Command-line interface for re-authenticating users.
+    Command-line interface for re-authenticating email accounts.
     
     Usage:
-        python reauth_user.py              # Re-auth all users
-        python reauth_user.py <user_id>    # Re-auth specific user
+        python reauth_user.py                      # Re-auth all email accounts
+        python reauth_user.py <email_account_id>   # Re-auth specific email account
     """
     if len(sys.argv) > 1:
-        # Re-authenticate specific user
+        # Re-authenticate specific email account
         try:
-            user_id = int(sys.argv[1])
-            success = force_reauth_for_user(user_id)
+            email_account_id = int(sys.argv[1])
+            success = force_reauth_for_email_account(email_account_id)
             sys.exit(0 if success else 1)
         except ValueError:
-            print(f"❌ Error: Invalid user ID '{sys.argv[1]}'. Must be an integer.")
+            print(f"❌ Error: Invalid email account ID '{sys.argv[1]}'. Must be an integer.")
             sys.exit(1)
     else:
-        # Re-authenticate all users
-        results = reauth_all_users()
+        # Re-authenticate all email accounts
+        results = reauth_all_email_accounts()
         
         # Exit with error code if any re-auth failed
         if not all(results.values()):

@@ -16,39 +16,73 @@ from google.oauth2.credentials import Credentials
 # SQLAlchemy setup
 Base = declarative_base()
 
-class User(Base):
-    """User table - stores basic user information
-
+class Account(Base):
+    """Account table - stores user accounts for authentication
+    
     What it stores:
-    - id, email, name: basic identity fields
-    - created_at, updated_at: timestamps for bookkeeping
-    - relationships to the user's token (UserToken) and emails (Email)
-
+    - id: primary key
+    - primary_email: the email used for login
+    - password_hash: hashed password for authentication
+    - created_at, updated_at: timestamps
+    
     What it's for:
-    - Represents a person/account in the local system for which we store
-      OAuth credentials and cached email data.
-
+    - Represents the actual person/user who logs into the system
+    - One account can have multiple EmailAccounts (Gmail/Outlook)
+    
     Why it exists:
-    - We need a stable DB entity to associate tokens and email records with
-      a particular owner. Using a User table lets the system support
-      multiple Gmail accounts in the same database and simplifies lookups
-      and joins (e.g. find all emails for a given user).
+    - Separates authentication (Account) from email management (EmailAccount)
+    - Allows one user to manage multiple Gmail/Outlook accounts
     """
-    __tablename__ = 'users'
+    __tablename__ = 'accounts'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), unique=True, nullable=False)
-    name = Column(String(255), nullable=True)
+    primary_email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    token = relationship("UserToken", back_populates="user", uselist=False)
-    emails = relationship("Email", back_populates="user")
+    email_accounts = relationship("EmailAccount", back_populates="account")
 
-class UserToken(Base):
-    """User tokens table - stores OAuth2 credentials
+class EmailAccount(Base):
+    """EmailAccount table - stores Gmail/Outlook accounts
+    
+    What it stores:
+    - id: primary key
+    - account_id: foreign key to Account (the owner)
+    - email: the Gmail/Outlook email address
+    - provider: 'gmail' or 'outlook'
+    - is_primary: whether this is the default email account to show
+    - created_at, updated_at: timestamps
+    
+    What it's for:
+    - Represents a Gmail or Outlook account that has been connected
+    - Stores OAuth credentials via UserToken relationship
+    - Links emails fetched from this account
+    
+    Why it exists:
+    - Allows one user (Account) to manage multiple email accounts
+    - Separates authentication from email account management
+    """
+    __tablename__ = 'email_accounts'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    provider = Column(String(50), nullable=False, default='gmail')  # 'gmail' or 'outlook'
+    is_primary = Column(Integer, nullable=False, default=0)  # 0 = False, 1 = True (SQLite doesn't have boolean)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    account = relationship("Account", back_populates="email_accounts")
+    token = relationship("EmailToken", back_populates="email_account", uselist=False)
+    emails = relationship("Email", back_populates="email_account")
 
+
+class EmailToken(Base):
+    """EmailToken table - stores OAuth2 credentials for email accounts
+    
     What it stores:
     - access_token: the short-lived OAuth access token
     - refresh_token: refresh token used to obtain new access tokens
@@ -56,27 +90,24 @@ class UserToken(Base):
     - scopes: JSON-encoded list of scopes granted
     - expiry: datetime when the access token expires
     - timestamps: created_at/updated_at
-
+    
     What it's for:
-    - Persisting the credentials required to call Google APIs on behalf of
-      a User without relying on token.json files on disk.
-
+    - Persisting the credentials required to call Google/Microsoft APIs
+      for a specific EmailAccount without relying on token.json files
+    
     Why it exists:
-    - Storing credentials in the DB centralizes token management, makes the
-      tokens available to any process that can access the DB (useful when
-      running in containers or on a remote server), and enables programmatic
-      refresh and rotation of tokens.
-
-    Methods (brief):
-    - to_credentials(): Convert the DB row into a google.oauth2.credentials.Credentials
-      object usable by Google client libraries.
-    - from_credentials(): Class helper to construct the DB model from a
-      Credentials object (useful when saving freshly-obtained credentials).
+    - Storing credentials in the DB centralizes token management
+    - Each EmailAccount has its own OAuth token
+    - Enables programmatic refresh and rotation of tokens
+    
+    Methods:
+    - to_credentials(): Convert DB row to google.oauth2.credentials.Credentials
+    - from_credentials(): Create DB model from Credentials object
     """
-    __tablename__ = 'user_tokens'
+    __tablename__ = 'email_tokens'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
+    email_account_id = Column(Integer, ForeignKey('email_accounts.id'), unique=True, nullable=False)
     access_token = Column(Text, nullable=False)
     refresh_token = Column(Text, nullable=True)
     token_uri = Column(String(255), nullable=True)
@@ -88,7 +119,7 @@ class UserToken(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user = relationship("User", back_populates="token")
+    email_account = relationship("EmailAccount", back_populates="token")
     
     def to_credentials(self) -> Credentials:
         """Convert stored token data to Google Credentials object"""
@@ -105,10 +136,10 @@ class UserToken(Base):
         )
     
     @classmethod
-    def from_credentials(cls, user_id: int, creds: Credentials) -> 'UserToken':
-        """Create UserToken from Google Credentials object"""
+    def from_credentials(cls, email_account_id: int, creds: Credentials) -> 'EmailToken':
+        """Create EmailToken from Google Credentials object"""
         return cls(
-            user_id=user_id,
+            email_account_id=email_account_id,
             access_token=creds.token,
             refresh_token=creds.refresh_token,
             token_uri=creds.token_uri,
@@ -119,8 +150,8 @@ class UserToken(Base):
         )
 
 class Email(Base):
-    """Email table - stores Gmail message data
-
+    """Email table - stores Gmail/Outlook message data
+    
     What it stores:
     - message_id: Gmail's unique message identifier (used to avoid duplicates)
     - thread_id: Gmail thread identifier
@@ -129,19 +160,20 @@ class Email(Base):
     - snippet: Gmail-provided short preview text
     - body_text, body_html: cached message body content
     - created_at: when this row was inserted into the DB
-
+    
     What it's for:
     - Caching and indexing messages locally so the application can present
-      recent emails without re-fetching them from Gmail on every view.
-
+      recent emails without re-fetching them from Gmail on every view
+    
     Why it exists:
     - Local storage improves performance, enables offline reads, and
-      provides a durable audit trail of messages the agent has seen.
+      provides a durable audit trail of messages the agent has seen
+    - Each email belongs to a specific EmailAccount
     """
     __tablename__ = 'emails'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    email_account_id = Column(Integer, ForeignKey('email_accounts.id'), nullable=False)
     message_id = Column(String(255), nullable=False)  # Gmail message ID
     thread_id = Column(String(255), nullable=True)
     subject = Column(Text, nullable=True)
@@ -154,7 +186,7 @@ class Email(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    user = relationship("User", back_populates="emails")
+    email_account = relationship("EmailAccount", back_populates="emails")
 
 # Database utilities
 class DatabaseManager:
@@ -192,22 +224,92 @@ class DatabaseManager:
         """Get a new database session (object to access the database)"""
         return self.SessionLocal()
     
-    def get_or_create_user(self, email: str, name: Optional[str] = None) -> User:
-        """Get existing user or create new one"""
+    # Account management methods
+    def get_or_create_account(self, primary_email: str, password_hash: str) -> Account:
+        """Get existing account or create new one"""
         with self.get_session() as session:
-            user = session.query(User).filter(User.email == email).first()
-            if not user:
-                user = User(email=email, name=name)
-                session.add(user)
+            account = session.query(Account).filter(Account.primary_email == primary_email).first()
+            if not account:
+                account = Account(primary_email=primary_email, password_hash=password_hash)
+                session.add(account)
                 session.commit()
-                session.refresh(user)
-            return user
+                session.refresh(account)
+            # Access ID before session closes
+            account_id = account.id
+            account_email = account.primary_email
+            account_created = account.created_at
+        # Return a new detached object with the data
+        result = Account(primary_email=account_email, password_hash=password_hash)
+        result.id = account_id
+        result.created_at = account_created
+        return result
     
-    def save_user_token(self, user_id: int, credentials: Credentials) -> UserToken:
-        """Save or update user's OAuth token"""
+    def get_account_by_email(self, primary_email: str) -> Optional[Account]:
+        """Get account by primary email"""
+        with self.get_session() as session:
+            return session.query(Account).filter(Account.primary_email == primary_email).first()
+    
+    def get_all_accounts(self) -> list[Account]:
+        """Get all accounts from the database"""
+        with self.get_session() as session:
+            return session.query(Account).order_by(Account.primary_email).all()
+	
+    def get_all_email_accounts(self) -> list[EmailAccount]:
+        """Get all email accounts from the database"""
+        with self.get_session() as session:
+            return session.query(EmailAccount).order_by(EmailAccount.email).all()
+	
+    # EmailAccount management methods
+    def get_or_create_email_account(self, account_id: int, email: str, provider: str = 'gmail', is_primary: bool = False) -> EmailAccount:
+        """Get existing email account or create new one"""
+        with self.get_session() as session:
+            email_account = session.query(EmailAccount).filter(EmailAccount.email == email).first()
+            if not email_account:
+                email_account = EmailAccount(
+                    account_id=account_id,
+                    email=email,
+                    provider=provider,
+                    is_primary=1 if is_primary else 0
+                )
+                session.add(email_account)
+                session.commit()
+                session.refresh(email_account)
+            # Access data before session closes
+            ea_id = email_account.id
+            ea_account_id = email_account.account_id
+            ea_email = email_account.email
+            ea_provider = email_account.provider
+            ea_is_primary = email_account.is_primary
+            ea_created = email_account.created_at
+        # Return detached object
+        result = EmailAccount(
+            account_id=ea_account_id,
+            email=ea_email,
+            provider=ea_provider,
+            is_primary=ea_is_primary
+        )
+        result.id = ea_id
+        result.created_at = ea_created
+        return result
+    
+    def get_account_email_accounts(self, account_id: int) -> list[EmailAccount]:
+        """Get all email accounts for a specific account"""
+        with self.get_session() as session:
+            return session.query(EmailAccount).filter(
+                EmailAccount.account_id == account_id
+            ).order_by(EmailAccount.is_primary.desc(), EmailAccount.email).all()
+    
+    def get_email_account_by_id(self, email_account_id: int) -> Optional[EmailAccount]:
+        """Get email account by ID"""
+        with self.get_session() as session:
+            return session.query(EmailAccount).filter(EmailAccount.id == email_account_id).first()
+    
+    # OAuth token management methods
+    def save_email_token(self, email_account_id: int, credentials: Credentials) -> EmailToken:
+        """Save or update email account's OAuth token"""
         with self.get_session() as session:
             # Check if token exists
-            token = session.query(UserToken).filter(UserToken.user_id == user_id).first()
+            token = session.query(EmailToken).filter(EmailToken.email_account_id == email_account_id).first()
             
             if token:
                 # Update existing token
@@ -221,35 +323,36 @@ class DatabaseManager:
                 token.updated_at = datetime.utcnow()
             else:
                 # Create new token
-                token = UserToken.from_credentials(user_id, credentials)
+                token = EmailToken.from_credentials(email_account_id, credentials)
                 session.add(token)
             
             session.commit()
             session.refresh(token)
             return token
     
-    def get_user_credentials(self, user_id: int) -> Optional[Credentials]:
-        """Get user's stored credentials"""
+    def get_email_account_credentials(self, email_account_id: int) -> Optional[Credentials]:
+        """Get email account's stored OAuth credentials"""
         with self.get_session() as session:
-            token = session.query(UserToken).filter(UserToken.user_id == user_id).first()
+            token = session.query(EmailToken).filter(EmailToken.email_account_id == email_account_id).first()
             if token:
                 return token.to_credentials()
             return None
     
-    def save_emails(self, user_id: int, email_data: list) -> list[Email]:
+    # Email management methods
+    def save_emails(self, email_account_id: int, email_data: list) -> list[Email]:
         """Save email data to database"""
         with self.get_session() as session:
             emails = []
             for data in email_data:
                 # Check if email already exists
                 existing = session.query(Email).filter(
-                    Email.user_id == user_id,
+                    Email.email_account_id == email_account_id,
                     Email.message_id == data['message_id']
                 ).first()
                 
                 if not existing:
                     email = Email(
-                        user_id=user_id,
+                        email_account_id=email_account_id,
                         message_id=data['message_id'],
                         subject=data.get('subject'),
                         sender=data.get('sender'),
@@ -262,26 +365,21 @@ class DatabaseManager:
                     session.add(email)
                     emails.append(email)
             
-            session.commit()    # Commit addition to the database (persist the changes)
+            session.commit()
             return emails
     
-    def get_user_emails(self, user_id: int, limit: int = 50) -> list[Email]:
-        """Get user's stored emails"""
+    def get_email_account_emails(self, email_account_id: int, limit: int = 50) -> list[Email]:
+        """Get emails for a specific email account"""
         with self.get_session() as session:
             return session.query(Email).filter(
-                Email.user_id == user_id
+                Email.email_account_id == email_account_id
             ).order_by(Email.date_sent.desc()).limit(limit).all()
 
-    def get_latest_email_date(self, user_id: int) -> Optional[datetime]:
-        """Get the date of the most recent email stored for a user"""
+    def get_latest_email_date(self, email_account_id: int) -> Optional[datetime]:
+        """Get the date of the most recent email stored for an email account"""
         with self.get_session() as session:
             latest_email = session.query(Email).filter(
-                Email.user_id == user_id
+                Email.email_account_id == email_account_id
             ).order_by(Email.date_sent.desc()).first()
             
             return latest_email.date_sent if latest_email else None
-
-    def get_all_users(self) -> list[User]:
-        """Get all users from the database"""
-        with self.get_session() as session:
-            return session.query(User).order_by(User.email).all()

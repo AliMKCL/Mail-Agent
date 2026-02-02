@@ -1,0 +1,2037 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <div class="top-search-wrapper">
+                <form id="topSearchForm" onsubmit="onTopSearchSubmit(event)" class="top-search-form">
+                    <!-- AI Sparkle Icon -->
+                    <svg class="top-search-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2L9.5 9.5L2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z" />
+                        <circle cx="12" cy="12" r="2" fill="currentColor" opacity="0.8" />
+                    </svg>
+                    <input id="AISearchInput" type="search" placeholder="Ask AI Assistant anything..."
+                        aria-label="Ask AI Assistant" class="top-search-input" />
+                </form>
+            </div>
+            <div class="top-bar-icons">
+                <button class="icon-btn notification-btn" id="notificationBtn" title="Notifications"
+                    onclick="showNotificationModal()">
+                    <!-- Notification Icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                        stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                    <span class="notification-badge" id="notificationBadge">0</span>
+                </button>
+                <button class="icon-btn" title="Account Details">
+                    <!-- Account Icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                        stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8" r="4" />
+                        <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                    </svg>
+                </button>
+                <button class="icon-btn" title="Settings">
+                    <!-- Settings Icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                        stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+    </div>
+    <div class="container">
+        <!-- Messages Panel -->
+        <div class="panel messages-panel">
+            <div class="panel-header" id="messagesHeader">
+                <div class="header-left">
+                    <svg class="icon" viewBox="0 0 24 24">
+                        <path
+                            d="M19 4H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 2v.01L12 13 5 6.01V6h14zm-7 7.99L5 6.01V18h14V6.01l-7 7.98z">
+                        </path>
+                    </svg>
+                    <div class="header-title">Personal Inbox</div>
+                </div>
+
+                <button class="sync-button" onclick="syncEmails()" id="syncBtn" disabled>
+                    <svg class="sync-icon" viewBox="0 0 24 24">
+                        <path
+                            d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.1-.9 2-2 2h-1v2h1c2.21 0 4-1.79 4-4 0-4.42-3.58-8-8-8zm-6 8c0-1.1.9-2 2-2h1V8H8c-2.21 0-4 1.79-4 4 0 4.42 3.58 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6z">
+                        </path>
+                    </svg>
+
+                </button>
+            </div>
+
+            <!-- Account Dropdown and Search Bar Row -->
+            <div class="account-search-row">
+                <div class="account-dropdown-wrapper">
+                    <div class="account-dropdown" id="accountDropdown">
+                        <button class="account-dropdown-btn" id="accountDropdownBtn" onclick="toggleAccountDropdown()">
+                            <span id="selectedAccountText">Account</span>
+                            <svg class="dropdown-arrow" viewBox="0 0 24 24">
+                                <path d="M7 10l5 5 5-5z"></path>
+                            </svg>
+                        </button>
+                        <div class="account-dropdown-menu" id="accountDropdownMenu">
+                            <div class="loading">Loading users...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="search-wrapper-messages">
+                    <form id="titleSearchForm" onsubmit="onTitleSearchSubmit(event)" class="search-form-messages">
+                        <svg class="search-icon" viewBox="0 0 24 24">
+                            <path
+                                d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99c.41.41 1.09.41 1.5 0s.41-1.09 0-1.5l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z">
+                            </path>
+                        </svg>
+                        <input id="titleSearchInput" type="search" placeholder="Search subjects..."
+                            aria-label="Search subjects" class="search-input-messages" />
+                    </form>
+                </div>
+            </div>
+
+            <div class="panel-content" id="messagesPanel">
+                <div class="messages-content" id="messagesContent">
+                    <div class="loading">Select a user to view emails...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Panel -->
+        <div class="panel calendar-panel">
+            <div class="panel-header" id="calendarHeader">
+                <div class="calendar-header-content">
+                    <svg class="calendar-icon" viewBox="0 0 24 24">
+                        <path
+                            d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V8h14v12zm0-14H5V6h14v2z">
+                        </path>
+                    </svg>
+                    <span class="calendar-title">Calendar</span>
+                </div>
+                <div class="calendar-nav">
+                    <button class="nav-btn" id="prevMonth" onclick="changeMonth(-1)">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                    </button>
+                    <span class="current-month" id="currentMonth">October 2025</span>
+                    <button class="nav-btn" id="nextMonth" onclick="changeMonth(1)">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-content" id="calendarPanel">
+                <div class="calendar-container">
+                    <div class="calendar-weekdays">
+                        <div class="weekday">Sun</div>
+                        <div class="weekday">Mon</div>
+                        <div class="weekday">Tue</div>
+                        <div class="weekday">Wed</div>
+                        <div class="weekday">Thu</div>
+                        <div class="weekday">Fri</div>
+                        <div class="weekday">Sat</div>
+                    </div>
+                    <div class="calendar-grid" id="calendarGrid">
+                        <!-- Calendar days will be generated by JavaScript -->
+                    </div>
+                    <div class="calendar-legend">
+                        <div class="legend-item">
+                            <div class="legend-dot" style="background-color: #ff6b6b;"></div>
+                            <span>Academic</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-dot" style="background-color: #4ecdc4;"></div>
+                            <span>Career</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-dot" style="background-color: #f7c23e;"></div>
+                            <span>Social</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-dot" style="background-color: #9b59b6;"></div>
+                            <span>Deadline</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-dot" style="background-color: #8B0000;"></div>
+                            <span>Moodle</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reminders Panel -->
+        <div class="panel reminders-panel">
+            <div class="panel-header" id="remindersHeader">
+                <div class="reminders-header-content">
+                    <svg class="reminders-icon" viewBox="0 0 24 24">
+                        <path
+                            d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10 3.17 10 4v.68C7.13 5.36 5.5 7.92 5.5 11v5l-1.7 1.7c-.14.14-.3.33-.3.53V19c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-.77c0-.2-.16-.39-.3-.53L18 16z">
+                        </path>
+                    </svg>
+                    Reminders
+                </div>
+                <select id="reminderCategoryFilter" class="reminder-filter-dropdown" onchange="updateReminders()">
+                    <option value="All">All</option>
+                    <option value="Academic">Academic</option>
+                    <option value="Career">Career</option>
+                    <option value="Social">Social</option>
+                    <option value="Deadline">Deadline</option>
+                    <option value="Moodle">Moodle</option>
+                </select>
+            </div>
+            <div class="panel-content" id="remindersPanel">
+                <div class="reminders-content">
+                    <!-- Day headers -->
+                    <div class="reminder-day-headers" id="reminderDayHeaders"></div>
+                    <!-- Grid of reminder cells -->
+                    <div class="reminder-cells-grid" id="reminderCellsGrid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API base URL - change this if backend is on a different port
+        const API_BASE_URL = 'http://localhost:8000';
+
+        let emails = [];
+        let users = [];
+        // Load email_account_id from localStorage (set during sign-up)
+        let currentEmailAccountId = localStorage.getItem('email_account_id') ? parseInt(localStorage.getItem('email_account_id')) : null;
+
+        // Calendar variables
+        let currentCalendarDate = new Date();
+        let initialCalendarDate = new Date(); // Track when events were loaded (current date)
+        let selectedDateElement = null;
+        let calendarEvents = {}; // Store events by date
+
+        // Calendar category colors
+        const eventCategories = {
+            'Academic': '#ff6b6b',
+            'Career': '#4ecdc4',
+            'Social': '#f7c23e',
+            'Deadline': '#9b59b6',
+            'Moodle': '#8B0000'  // Dark red for Moodle events
+        };
+
+        // Notification system variables
+        let newMoodleEvents = []; // Store unread Moodle events
+
+        // Get seen event IDs from localStorage
+        function getSeenEventIds() {
+            const stored = localStorage.getItem('seenMoodleEventIds');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        // Mark event IDs as seen in localStorage
+        function markEventsAsSeen(eventIds) {
+            const currentSeen = getSeenEventIds();
+            const allSeen = [...new Set([...currentSeen, ...eventIds])];
+            // Keep only the last 500 event IDs to prevent localStorage bloat
+            const trimmed = allSeen.slice(-500);
+            localStorage.setItem('seenMoodleEventIds', JSON.stringify(trimmed));
+        }
+
+        // Check for new events by comparing fetched vs seen
+        function checkForNewEvents(moodleEvents) {
+            const seenIds = getSeenEventIds();
+            newMoodleEvents = [];
+
+            // Flatten moodle events from all dates and check which are new
+            for (const [date, events] of Object.entries(moodleEvents)) {
+                for (const event of events) {
+                    if (event.id && !seenIds.includes(event.id)) {
+                        newMoodleEvents.push({
+                            ...event,
+                            date: date
+                        });
+                    }
+                }
+            }
+
+            updateNotificationBadge();
+        }
+
+        // Update the notification badge count and color
+        function updateNotificationBadge() {
+            const badge = document.getElementById('notificationBadge');
+            const count = newMoodleEvents.length;
+
+            badge.textContent = count;
+
+            if (count > 0) {
+                badge.classList.add('has-new');
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.remove('has-new');
+                // Show gray badge with 0
+            }
+        }
+
+        // Show notification modal
+        function showNotificationModal() {
+            const modal = document.getElementById('notificationModal');
+            const listContainer = document.getElementById('notificationList');
+            const noNotifications = document.getElementById('noNotifications');
+
+            if (newMoodleEvents.length === 0) {
+                listContainer.style.display = 'none';
+                noNotifications.style.display = 'block';
+            } else {
+                listContainer.style.display = 'block';
+                noNotifications.style.display = 'none';
+
+                // Render notification items
+                listContainer.innerHTML = newMoodleEvents.map(event => `
+                    <div class="notification-item">
+                        <div class="notification-dot" style="background-color: ${eventCategories['Moodle']}"></div>
+                        <div class="notification-content">
+                            <div class="notification-title">${event.title || 'Untitled Event'}</div>
+                            <div class="notification-meta">${event.date} ${event.time ? '- ' + event.time : ''}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Mark events as seen
+                const eventIds = newMoodleEvents.map(e => e.id).filter(id => id);
+                markEventsAsSeen(eventIds);
+
+                // Clear new events and update badge
+                newMoodleEvents = [];
+                updateNotificationBadge();
+            }
+
+            modal.style.display = 'block';
+        }
+
+        // Hide notification modal
+        function hideNotificationModal() {
+            document.getElementById('notificationModal').style.display = 'none';
+        }
+
+        // Format date for display
+        function formatDate(dateString) {
+            if (!dateString) return 'Unknown';
+
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+            if (days === 0) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else if (days === 1) {
+                return 'Yesterday';
+            } else if (days < 7) {
+                return `${days} days ago`;
+            } else {
+                return date.toLocaleDateString();
+            }
+        }
+
+        // Truncate text with ellipsis
+        function truncateText(text, maxLength) {
+            if (!text) return '';
+            return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        }
+
+        // Extract sender name from email address
+        function extractSenderName(sender) {
+            if (!sender) return 'Unknown';
+
+            // Try to extract name from "Name <email@domain.com>" format
+            const match = sender.match(/^(.+?)\s*<.+>$/);
+            if (match) {
+                return match[1].replace(/"/g, '').trim();
+            }
+
+            // If just email, return email
+            return sender;
+        }
+
+        // Render account dropdown
+        function renderAccountDropdown() {
+            const dropdownMenu = document.getElementById('accountDropdownMenu');
+            const selectedAccountText = document.getElementById('selectedAccountText');
+
+            let menuHtml = '';
+
+            if (users.length === 0) {
+                menuHtml = '<div class="dropdown-loading">No users found</div>';
+            } else {
+                menuHtml = users.map(user => `
+                    <div class="dropdown-item ${currentEmailAccountId === user.id ? 'active' : ''}" 
+                         onclick="selectUser(${user.id})" 
+                         data-user-id="${user.id}">
+                        ${user.email}
+                    </div>
+                `).join('');
+            }
+
+            // Always add the "Add Account" option
+            menuHtml += `
+                <div class="dropdown-separator"></div>
+                <div class="dropdown-item add-account" onclick="showAddUserModal()">
+                    <span class="plus-icon">+</span> Add Gmail Account
+                </div>
+            `;
+
+            dropdownMenu.innerHTML = menuHtml;
+
+            // Update selected account text
+            if (currentEmailAccountId && users.length > 0) {
+                const selectedUser = users.find(user => user.id === currentEmailAccountId);
+                if (selectedUser) {
+                    selectedAccountText.textContent = selectedUser.email;
+                }
+            } else {
+                selectedAccountText.textContent = 'Account';
+            }
+        }        // Select a user and load their emails
+        async function selectUser(userId) {
+            currentEmailAccountId = userId;
+            const syncBtn = document.getElementById('syncBtn');
+            syncBtn.disabled = false;
+
+            // Update dropdown display
+            renderAccountDropdown();
+
+            // Close dropdown after selection
+            closeAccountDropdown();
+
+            // Check if user has OAuth credentials
+            const selectedUser = users.find(u => u.id === userId);
+            if (selectedUser && !selectedUser.has_oauth_credentials) {
+                // User needs to authenticate with Gmail
+                if (confirm('You need to connect your Gmail account to access emails and calendar. Click OK to authenticate.')) {
+                    // Trigger OAuth flow
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/api/auth/google?email_account_id=${userId}`);
+                        const data = await response.json();
+                        if (data.auth_url) {
+                            window.location.href = data.auth_url;
+                        }
+                    } catch (error) {
+                        console.error('Error initiating OAuth:', error);
+                        alert('Failed to start authentication. Please try again.');
+                    }
+                }
+                return;
+            }
+
+            // Load emails for this user
+            loadEmails();
+
+            // Load calendar events for this user
+            loadCalendarEvents();
+        }
+
+        // Toggle account dropdown
+        function toggleAccountDropdown() {
+            const dropdownMenu = document.getElementById('accountDropdownMenu');
+            const dropdownBtn = document.getElementById('accountDropdownBtn');
+
+            if (dropdownMenu.classList.contains('show')) {
+                closeAccountDropdown();
+            } else {
+                openAccountDropdown();
+            }
+        }
+
+        // Open account dropdown
+        function openAccountDropdown() {
+            const dropdownMenu = document.getElementById('accountDropdownMenu');
+            const dropdownBtn = document.getElementById('accountDropdownBtn');
+
+            dropdownMenu.classList.add('show');
+            dropdownBtn.classList.add('active');
+        }
+
+        // Close account dropdown
+        function closeAccountDropdown() {
+            const dropdownMenu = document.getElementById('accountDropdownMenu');
+            const dropdownBtn = document.getElementById('accountDropdownBtn');
+
+            dropdownMenu.classList.remove('show');
+            dropdownBtn.classList.remove('active');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function (event) {
+            const dropdown = document.getElementById('accountDropdown');
+            if (!dropdown.contains(event.target)) {
+                closeAccountDropdown();
+            }
+        });
+
+        // Render emails in the messages panel
+        function renderEmails() {
+            const messagesContent = document.getElementById('messagesContent');
+
+            if (!currentEmailAccountId) {
+                messagesContent.innerHTML = '<div class="loading">Select a user to view emails...</div>';
+                return;
+            }
+
+            if (emails.length === 0) {
+                messagesContent.innerHTML = '<div class="loading">No emails found. Click Sync to fetch emails.</div>';
+                return;
+            }
+
+            const emailsHtml = emails.map(email => `
+                <div class="email-item" onclick="selectEmail('${email.id}')">
+                    <div class="email-header">
+                        <div>
+                            <div class="email-subject">${truncateText(email.subject, 60)}</div>
+                            <div class="email-sender">${extractSenderName(email.sender)}</div>
+                        </div>
+                        <div class="email-date">${formatDate(email.date_sent)}</div>
+                    </div>
+                    <div class="email-snippet">${truncateText(email.snippet, 120)}</div>
+                </div>
+            `).join('');
+
+            messagesContent.innerHTML = emailsHtml;
+        }
+
+        // Load users from API
+        async function loadUsers() {
+            try {
+                const response = await fetch(API_BASE_URL + '/api/users');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                users = await response.json();
+                renderAccountDropdown();
+
+                // Auto-select first user if available
+                if (users.length > 0 && !currentEmailAccountId) {
+                    selectUser(users[0].id);
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+                document.getElementById('accountDropdownMenu').innerHTML =
+                    '<div class="error">Error loading users. Please try again.</div>';
+            }
+        }
+
+        // Load emails from API
+        // Keep a backup of the full email list in emailsBackup so we can restore after clearing a search
+        let emailsBackup = [];
+        async function loadEmails() {
+            if (!currentEmailAccountId) {
+                renderEmails();
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/emails?email_account_id=${currentEmailAccountId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                emails = await response.json();
+                // Save backup copy for clearing search
+                emailsBackup = Array.isArray(emails) ? emails.slice() : [];
+                renderEmails();
+            } catch (error) {
+                console.error('Error loading emails:', error);
+                document.getElementById('messagesContent').innerHTML =
+                    '<div class="error">Error loading emails. Please try again.</div>';
+            }
+        }
+
+        // Sync emails from Gmail
+        async function syncEmails() {
+            if (!currentEmailAccountId) {
+                alert('Please select a user first');
+                return;
+            }
+
+            const syncBtn = document.getElementById('syncBtn');
+            const originalHTML = syncBtn.innerHTML; // Save the original HTML (including SVG)
+
+            syncBtn.disabled = true;
+            syncBtn.innerHTML = 'Syncing...'; // Show text while syncing
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/sync?email_account_id=${currentEmailAccountId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Sync result:', result);
+
+                // Reload emails after sync
+                await loadEmails();
+
+                // Show success message briefly
+                syncBtn.innerHTML = '✓ Done!';
+                setTimeout(() => {
+                    syncBtn.innerHTML = originalHTML; // Restore the original SVG icon
+                    syncBtn.disabled = currentEmailAccountId === null;
+                }, 2000);
+
+            } catch (error) {
+                console.error('Error syncing emails:', error);
+                syncBtn.innerHTML = '✗ Error';
+                setTimeout(() => {
+                    syncBtn.innerHTML = originalHTML; // Restore the original SVG icon
+                    syncBtn.disabled = currentEmailAccountId === null;
+                }, 2000);
+            }
+        }
+
+        // Select email and show detailed view
+        function selectEmail(emailId) {
+            const email = emails.find(e => e.id === emailId);
+            if (!email) return;
+
+            const messagesContent = document.getElementById('messagesContent');
+
+            // Format the date nicely
+            const emailDate = new Date(email.date_sent);
+            const formattedDate = emailDate.toLocaleString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            // Helper function to compress excessive spacing in HTML
+            function compressHtmlSpacing(html) {
+                return html
+                    // Remove multiple consecutive <br> tags (keep max 2)
+                    .replace(/(<br\s*\/?>[\s\n]*){3,}/gi, '<br><br>')
+                    // Remove multiple empty paragraphs (keep max 1)
+                    .replace(/(<p[^>]*>\s*<\/p>[\s\n]*){2,}/gi, '<p></p>')
+                    // Remove excessive whitespace between block elements
+                    .replace(/(<\/(div|p|blockquote|table)>)[\s\n]{3,}(<(div|p|blockquote|table))/gi, '$1\n\n$3')
+                    // Remove trailing/leading excessive whitespace
+                    .trim();
+            }
+
+            // Determine if we should render as HTML or plain text
+            let emailBodyHtml = '';
+
+            if (email.body_html && email.body_html !== email.body_text) {
+                // We have a separate HTML version - compress spacing and use it
+                emailBodyHtml = compressHtmlSpacing(email.body_html);
+            } else if (email.body_text) {
+                // Check if body_text contains HTML tags
+                const hasHtmlTags = /<[a-z][\s\S]*>/i.test(email.body_text);
+
+                if (hasHtmlTags) {
+                    // body_text contains HTML - compress spacing and render it as HTML
+                    emailBodyHtml = compressHtmlSpacing(email.body_text);
+                } else {
+                    // body_text is plain text - compress multiple newlines to max 2
+                    const compressedText = email.body_text.replace(/\n{3,}/g, '\n\n');
+
+                    // Escape HTML and convert newlines
+                    const escapedText = compressedText
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                    emailBodyHtml = escapedText.replace(/\n/g, '<br>');
+                }
+            } else if (email.snippet) {
+                // Fall back to snippet (escape it as plain text)
+                const escapedSnippet = email.snippet
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                emailBodyHtml = escapedSnippet;
+            } else {
+                emailBodyHtml = 'No content available';
+            }
+
+            // Create detailed view
+            const detailHtml = `
+                <div class="email-detail-view">
+                    <div class="email-detail-header">
+                        <button class="email-back-btn" onclick="closeEmailDetail()" title="Back to inbox">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="email-detail-content">
+                        <h2 class="email-detail-subject">${email.subject || 'No Subject'}</h2>
+                        <div class="email-detail-meta">
+                            <div class="email-meta-row">
+                                <span class="email-meta-label">From:</span>
+                                <span class="email-meta-value">${email.sender || 'Unknown Sender'}</span>
+                            </div>
+                            <div class="email-meta-row">
+                                <span class="email-meta-label">To:</span>
+                                <span class="email-meta-value">${email.receiver || currentEmailAccountId || 'Me'}</span>
+                            </div>
+                            <div class="email-meta-row">
+                                <span class="email-meta-label">Date:</span>
+                                <span class="email-meta-value">${formattedDate}</span>
+                            </div>
+                        </div>
+                        <div class="email-detail-body">
+                            ${emailBodyHtml}
+                        </div>
+                    </div>
+                    <div class="email-detail-actions">
+                        <button class="email-action-btn reply-btn" onclick="replyToEmail('${email.id}')">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" fill="currentColor"/>
+                            </svg>
+                            Reply
+                        </button>
+                        <button class="email-action-btn forward-btn" onclick="forwardEmail('${email.id}')">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path d="M12 8V4l8 8-8 8v-4H4V8z" fill="currentColor"/>
+                            </svg>
+                            Forward
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            messagesContent.innerHTML = detailHtml;
+        }
+
+        // Close email detail view and return to inbox
+        function closeEmailDetail() {
+            renderEmails();
+        }
+
+        // Reply to email (placeholder)
+        function replyToEmail(emailId) {
+            const email = emails.find(e => e.id === emailId);
+            if (email) {
+                alert(`Reply functionality coming soon!\n\nReplying to: ${email.sender}\nSubject: Re: ${email.subject}`);
+            }
+        }
+
+        // Forward email (placeholder)
+        function forwardEmail(emailId) {
+            const email = emails.find(e => e.id === emailId);
+            if (email) {
+                alert(`Forward functionality coming soon!\n\nForwarding: ${email.subject}`);
+            }
+        }
+
+        // Show modal to add new Gmail account
+        function showAddUserModal() {
+            const modal = document.getElementById('addUserModal');
+            modal.style.display = 'block';
+            document.getElementById('emailInput').focus();
+        }
+
+        // Hide modal
+        function hideAddUserModal() {
+            const modal = document.getElementById('addUserModal');
+            modal.style.display = 'none';
+            document.getElementById('emailInput').value = '';
+            document.getElementById('nameInput').value = '';
+        }
+
+        // Add new Gmail account
+        async function addGmailAccount() {
+            const email = document.getElementById('emailInput').value.trim();
+            const name = document.getElementById('nameInput').value.trim();
+            const addButton = document.getElementById('addAccountBtn');
+
+            if (!email) {
+                alert('Please enter a Gmail address');
+                return;
+            }
+
+            // Basic email validation
+            if (!email.includes('@') || !email.includes('.')) {
+                alert('Please enter a valid email address');
+                return;
+            }
+
+            addButton.disabled = true;
+            addButton.textContent = 'Adding...';
+
+            try {
+                const response = await fetch(API_BASE_URL + '/api/users', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        name: name || null
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('User added:', result);
+
+                // Reload users and hide modal
+                await loadUsers();
+                hideAddUserModal();
+
+                // Show success message
+                alert(`Successfully added Gmail account: ${email}`);
+
+            } catch (error) {
+                console.error('Error adding user:', error);
+                alert('Error adding Gmail account. Please try again.');
+            } finally {
+                addButton.disabled = false;
+                addButton.textContent = 'Add Account';
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function (event) {
+            const addUserModal = document.getElementById('addUserModal');
+            const addEventModal = document.getElementById('addEventModal');
+            const editEventModal = document.getElementById('editEventModal');
+            const deleteEventModal = document.getElementById('deleteEventModal');
+
+            if (event.target == addUserModal) {
+                hideAddUserModal();
+            } else if (event.target == addEventModal) {
+                hideAddEventModal();
+            } else if (event.target == editEventModal) {
+                hideEditEventModal();
+            } else if (event.target == deleteEventModal) {
+                hideDeleteEventModal();
+            }
+        }
+
+        // Handle Enter key in modal
+        function handleModalKeyPress(event) {
+            if (event.key === 'Enter') {
+                addGmailAccount();
+            } else if (event.key === 'Escape') {
+                hideAddUserModal();
+            }
+        }
+
+        // Handle Enter key in event modal
+        function handleEventModalKeyPress(event) {
+            if (event.key === 'Enter') {
+                submitEvent();
+            } else if (event.key === 'Escape') {
+                hideAddEventModal();
+            }
+        }
+
+        // AI Search using vector database - displays AI-generated answer in a modal
+        async function onTopSearchSubmit(evt) {
+            evt.preventDefault();
+            const input = document.getElementById('AISearchInput');
+            const query = (input.value || '').trim();
+
+            if (!query) {
+                return;
+            }
+
+            if (!currentEmailAccountId) {
+                showAIResponseModal(query, 'Please select a user account first.', []);
+                return;
+            }
+
+            try {
+                // Show loading state
+                const searchIcon = document.querySelector('.top-search-icon');
+                if (searchIcon) {
+                    searchIcon.style.opacity = '0.5';
+                }
+
+                // Show loading modal
+                showAIResponseModal(query, 'Processing your request...', []);
+
+                // Call the new LLM query endpoint with MCP tool access
+                const response = await fetch(API_BASE_URL + '/api/llm-query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        user_id: currentEmailAccountId,
+                        use_openai: true  // Use OpenAI for function calling
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Display AI response with actions taken
+                    const actionsHtml = data.actions && data.actions.length > 0
+                        ? formatActionsHtml(data.actions)
+                        : '';
+
+                    showAIResponseModal(query, data.answer, [], actionsHtml);
+                    console.log(`AI responded to query: "${query}"`, data.actions);
+
+                    // Check if any calendar-modifying actions were taken
+                    const calendarActions = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'];
+                    const hasCalendarAction = data.actions && data.actions.some(action =>
+                        calendarActions.includes(action.tool) && action.result.status === 'success'
+                    );
+
+                    // Reload calendar if it was modified
+                    if (hasCalendarAction) {
+                        console.log('Calendar was modified, reloading calendar view...');
+                        loadCalendarEvents();
+                    }
+
+                    // Check if emails were synced
+                    const hasSyncAction = data.actions && data.actions.some(action =>
+                        action.tool === 'sync_emails' && action.result.status === 'success'
+                    );
+
+                    // Reload emails if they were synced
+                    if (hasSyncAction) {
+                        console.log('Emails were synced, reloading email list...');
+                        loadEmails();
+                    }
+                } else {
+                    showAIResponseModal(query, 'Error: ' + (data.error || 'Unable to get a response. Please try again.'), []);
+                }
+            } catch (error) {
+                console.error('Error performing AI search:', error);
+                showAIResponseModal(query, 'Error connecting to AI service. Please try again.', []);
+            } finally {
+                // Restore icon opacity
+                const searchIcon = document.querySelector('.top-search-icon');
+                if (searchIcon) {
+                    searchIcon.style.opacity = '1';
+                }
+            }
+        }
+
+        // Format actions taken by the LLM into HTML
+        function formatActionsHtml(actions) {
+            if (!actions || actions.length === 0) return '';
+
+            let html = '<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
+            html += '<h3 style="margin-top: 0; font-size: 14px; color: #5f6368;">Actions Taken:</h3>';
+            html += '<ul style="margin: 0; padding-left: 20px;">';
+
+            for (const action of actions) {
+                const toolName = action.tool || 'Unknown';
+                const result = action.result || {};
+
+                let actionDesc = '';
+                if (result.status === 'success') {
+                    switch (toolName) {
+                        case 'create_calendar_event':
+                            actionDesc = `✅ Created calendar event: "${action.arguments.title}"`;
+                            break;
+                        case 'search_emails':
+                            actionDesc = `🔍 Searched emails (found ${result.count || 0} results)`;
+                            break;
+                        case 'sync_emails':
+                            actionDesc = `📧 Synced ${result.new_emails || 0} new emails`;
+                            break;
+                        case 'extract_dates_from_emails':
+                            actionDesc = `📅 Extracted ${result.count || 0} deadlines`;
+                            break;
+                        default:
+                            actionDesc = `✓ Executed: ${toolName}`;
+                    }
+                } else {
+                    actionDesc = `❌ ${toolName} failed: ${result.error || 'Unknown error'}`;
+                }
+
+                html += `<li style="margin: 5px 0;">${actionDesc}</li>`;
+            }
+
+            html += '</ul></div>';
+            return html;
+        }
+
+        // Display AI response in a modal
+        function showAIResponseModal(query, answer, sources, actionsHtml = '') {
+            // Create modal if it doesn't exist
+            let modal = document.getElementById('aiResponseModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'aiResponseModal';
+                modal.className = 'modal';
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 700px;">
+                        <span class="close" onclick="closeAIResponseModal()">&times;</span>
+                        <h2 style="margin-top: 0; color: #1a73e8;">AI Assistant</h2>
+                        <div id="aiResponseContent"></div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                // Close on outside click
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        closeAIResponseModal();
+                    }
+                });
+            }
+
+            // Build content
+            let content = `
+                <div style="margin-bottom: 20px;">
+                    <strong style="color: #555;">Your question:</strong>
+                    <p style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin: 8px 0;">${query}</p>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <strong style="color: #555;">Answer:</strong>
+                    <div style="background: #fff; padding: 15px; border-left: 3px solid #1a73e8; margin: 8px 0;">
+                        ${answer}
+                    </div>
+                </div>
+            `;
+
+            // Add actions section if provided
+            if (actionsHtml) {
+                content += actionsHtml;
+            }
+
+            if (sources && sources.length > 0) {
+                content += `
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                        <strong style="color: #555;">Sources (${sources.length} emails):</strong>
+                        <div style="margin-top: 10px;">
+                `;
+                sources.forEach((source, idx) => {
+                    content += `
+                        <div style="background: #f9f9f9; padding: 10px; margin: 8px 0; border-radius: 4px; font-size: 0.9em;">
+                            <div style="font-weight: 500;">${idx + 1}. ${source.subject || 'No Subject'}</div>
+                            <div style="color: #666; font-size: 0.85em; margin-top: 4px;">
+                                From: ${source.sender || 'Unknown'} | ${source.date_sent || 'Unknown date'}
+                            </div>
+                        </div>
+                    `;
+                });
+                content += `</div></div>`;
+            }
+
+            document.getElementById('aiResponseContent').innerHTML = content;
+            modal.style.display = 'block';
+        }
+
+        // Close AI response modal
+        function closeAIResponseModal() {
+            const modal = document.getElementById('aiResponseModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Search by title (subject) - substring match, case-insensitive. Called on form submit or pressing Enter.
+        function onTitleSearchSubmit(evt) {
+            evt.preventDefault();
+            const input = document.getElementById('titleSearchInput');
+            const query = (input.value || '').trim().toLowerCase();
+            if (!query) {
+                // empty -> restore
+                clearTitleSearch();
+                return;
+            }
+
+            // Filter backup copy to avoid losing original list
+            emails = emailsBackup.filter(e => (e.subject || '').toLowerCase().includes(query));
+            renderEmails();
+            // show clear button state
+            document.getElementById('titleClearBtn').style.display = 'inline-block';
+        }
+
+        // Clear title search and restore all mails
+        function clearTitleSearch() {
+            document.getElementById('titleSearchInput').value = '';
+            emails = emailsBackup.slice();
+            renderEmails();
+            document.getElementById('titleClearBtn').style.display = 'none';
+        }
+
+        // Wire Enter key and clear button visibility on load
+        window.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('titleSearchInput');
+            const clearBtn = document.getElementById('titleClearBtn');
+            if (input) {
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        // Let form submit handler handle it
+                        return;
+                    }
+                });
+                input.addEventListener('input', () => {
+                    clearBtn.style.display = input.value ? 'inline-block' : 'none';
+                });
+            }
+            if (clearBtn) clearBtn.style.display = 'none';
+        });
+
+        // Calendar Functions
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const monthDisplay = document.getElementById('currentMonth');
+
+            const year = currentCalendarDate.getFullYear();
+            const month = currentCalendarDate.getMonth();
+
+            // Update month display
+            const monthNames = ["January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ];
+            monthDisplay.textContent = `${monthNames[month]} ${year}`;
+
+            // Clear grid
+            grid.innerHTML = '';
+
+            // Get first day of month and number of days
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const startingDayOfWeek = firstDay.getDay();
+
+            // Add empty cells for days before the first day of month
+            for (let i = 0; i < startingDayOfWeek; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = 'calendar-day empty';
+                grid.appendChild(emptyCell);
+            }
+
+            // Add days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayCell = document.createElement('button');
+                dayCell.className = 'calendar-day';
+                dayCell.textContent = day;
+
+                const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                dayCell.setAttribute('data-date', dateKey);
+
+                // Check if this is today
+                const today = new Date();
+                if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) {
+                    dayCell.classList.add('today');
+                }
+
+                // Add event indicators if events exist for this date
+                if (calendarEvents[dateKey] && calendarEvents[dateKey].length > 0) {
+                    const indicators = document.createElement('div');
+                    indicators.className = 'event-indicators';
+
+                    // Get unique categories (up to 4) while preserving duplicates
+                    const eventsByCategory = [];
+                    const seenCategories = new Set();
+
+                    for (const event of calendarEvents[dateKey]) {
+                        if (eventsByCategory.length >= 4) break;
+
+                        const category = event.category;
+                        if (!seenCategories.has(category)) {
+                            seenCategories.add(category);
+                        }
+
+                        // Only add if we haven't exceeded 4 unique categories
+                        if (seenCategories.size <= 4) {
+                            eventsByCategory.push(event);
+                        }
+                    }
+
+                    // Create dots for the selected events
+                    eventsByCategory.slice(0, 4).forEach(event => {
+                        const dot = document.createElement('div');
+                        dot.className = 'event-dot';
+                        dot.style.backgroundColor = eventCategories[event.category] || '#ccc';
+                        indicators.appendChild(dot);
+                    });
+
+                    dayCell.appendChild(indicators);
+                }
+
+                dayCell.onclick = () => selectDate(dayCell, dateKey);
+                grid.appendChild(dayCell);
+            }
+
+            // Update reminders after rendering calendar
+            updateReminders();
+        }
+
+        // ============================================================================
+        // REMINDERS SECTION
+        // ============================================================================
+
+        function updateReminders() {
+            const headersContainer = document.getElementById('reminderDayHeaders');
+            const cellsContainer = document.getElementById('reminderCellsGrid');
+            const categoryFilter = document.getElementById('reminderCategoryFilter').value;
+
+            if (!headersContainer || !cellsContainer) return;
+
+            // Get today and next 4 days
+            const today = new Date();
+            const days = [];
+            for (let i = 0; i < 5; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                days.push(date);
+            }
+
+            // Day name abbreviations
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+            // Render day headers
+            headersContainer.innerHTML = days.map((date, index) => {
+                const isToday = index === 0;
+                const dayName = dayNames[date.getDay()];
+                const dayDate = `${date.getMonth() + 1}/${date.getDate()}`;
+                return `
+                    <div class="reminder-day-header ${isToday ? 'today' : ''}">
+                        <span class="day-name">${isToday ? 'Today' : dayName}</span>
+                        <span class="day-date">${dayDate}</span>
+                    </div>
+                `;
+            }).join('');
+
+            // Render cells with events
+            cellsContainer.innerHTML = days.map((date, index) => {
+                const isToday = index === 0;
+                const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                // Get events for this date
+                let dayEvents = calendarEvents[dateKey] || [];
+
+                // Filter by category if not "All"
+                if (categoryFilter !== 'All') {
+                    dayEvents = dayEvents.filter(e => e.category === categoryFilter);
+                }
+
+                // Build cell content
+                let cellContent = '';
+                const maxDisplay = 5;
+                const displayEvents = dayEvents.slice(0, maxDisplay);
+                const hiddenCount = dayEvents.length - maxDisplay;
+
+                if (displayEvents.length === 0) {
+                    cellContent = '<div class="reminder-empty">No events</div>';
+                } else {
+                    displayEvents.forEach(event => {
+                        const color = eventCategories[event.category] || '#ccc';
+                        const title = truncateTitle(event.title, 25);
+                        cellContent += `
+                            <div class="reminder-event">
+                                <span class="reminder-event-dot" style="background-color: ${color}"></span>
+                                <span class="reminder-event-title">${title}</span>
+                            </div>
+                        `;
+                    });
+
+                    if (hiddenCount > 0) {
+                        cellContent += `<div class="reminder-more">+${hiddenCount} more</div>`;
+                    }
+                }
+
+                return `<div class="reminder-cell ${isToday ? 'today' : ''}">${cellContent}</div>`;
+            }).join('');
+        }
+
+        function truncateTitle(title, maxLength) {
+            if (!title) return '';
+            if (title.length <= maxLength) return title;
+            return title.substring(0, maxLength - 3) + '...';
+        }
+
+        function changeMonth(direction) {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() + direction);
+            updateNavigationButtons();
+            renderCalendar();
+        }
+
+        function updateNavigationButtons() {
+            const prevBtn = document.getElementById('prevMonth');
+            const nextBtn = document.getElementById('nextMonth');
+
+            if (!prevBtn || !nextBtn) return; // Safety check
+
+            // Calculate month difference from initial date
+            const monthDiff = (currentCalendarDate.getFullYear() - initialCalendarDate.getFullYear()) * 12
+                + (currentCalendarDate.getMonth() - initialCalendarDate.getMonth());
+
+            console.log('Month difference:', monthDiff); // Debug log
+
+            // Disable prev button if we're 6 months back (or more)
+            if (monthDiff <= -6) {
+                prevBtn.disabled = true;
+                prevBtn.classList.add('disabled');
+                console.log('Left button DISABLED');
+            } else {
+                prevBtn.disabled = false;
+                prevBtn.classList.remove('disabled');
+                console.log('Left button enabled');
+            }
+
+            // Disable next button if we're 24 months (2 years) forward (or more)
+            if (monthDiff >= 24) {
+                nextBtn.disabled = true;
+                nextBtn.classList.add('disabled');
+                console.log('Right button DISABLED');
+            } else {
+                nextBtn.disabled = false;
+                nextBtn.classList.remove('disabled');
+                console.log('Right button enabled');
+            }
+        }
+
+        function selectDate(element, dateKey) {
+            // Remove previous selection
+            if (selectedDateElement) {
+                selectedDateElement.classList.remove('selected');
+                hideEventDetails();
+            }
+
+            // Add selection to clicked date
+            element.classList.add('selected');
+            selectedDateElement = element;
+
+            // Show event details for this date
+            showEventDetails(dateKey);
+        }
+
+        function showEventDetails(dateKey) {
+            const events = calendarEvents[dateKey] || [];
+
+            // Create or update event detail panel
+            let detailPanel = document.getElementById('eventDetailPanel');
+            if (!detailPanel) {
+                detailPanel = document.createElement('div');
+                detailPanel.id = 'eventDetailPanel';
+                detailPanel.className = 'event-detail-panel';
+                document.querySelector('.calendar-container').appendChild(detailPanel);
+            }
+
+            const formattedDate = new Date(dateKey).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            let html = `
+                <div class="event-detail-header">
+                    <h3>${formattedDate}</h3>
+                    <button class="close-detail-btn" onclick="hideEventDetails()">×</button>
+                </div>
+                <div class="event-detail-content">
+            `;
+
+            if (events.length === 0) {
+                html += `
+                    <p class="no-events">No events scheduled</p>
+                `;
+            } else {
+                html += '<div class="events-grid">';
+                events.forEach((event, index) => {
+                    const categoryColor = eventCategories[event.category] || '#ccc';
+                    html += `
+                        <div class="event-item" style="border-color: ${categoryColor};" onclick="event.stopPropagation();">
+                            <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background-color: ${categoryColor}; border-radius: 8px 8px 0 0;"></div>
+                            <div class="event-header-row">
+                                <div class="event-category">${event.category}</div>
+                                ${event.time ? `<div class="event-time">${event.time}</div>` : ''}
+                            </div>
+                            <div class="event-title">${event.title}</div>
+                            ${event.description ? `<div class="event-description">${event.description}</div>` : ''}
+                            <div class="event-actions">
+                                <button onclick="event.stopPropagation(); editEvent('${dateKey}', ${index})">Edit</button>
+                                <button onclick="event.stopPropagation(); deleteEvent('${dateKey}', ${index})">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            html += `<button class="add-event-btn" onclick="addEvent('${dateKey}')">+ Add Event</button>`;
+            html += '</div>';
+            detailPanel.innerHTML = html;
+            detailPanel.style.display = 'block';
+        }
+
+        function hideEventDetails() {
+            const detailPanel = document.getElementById('eventDetailPanel');
+            if (detailPanel) {
+                detailPanel.style.display = 'none';
+            }
+        }
+
+        // Global variable to store the date for the new event
+        let selectedEventDate = null;
+
+        function addEvent(dateKey) {
+            if (!currentEmailAccountId) {
+                alert('Please select a user first');
+                return;
+            }
+
+            selectedEventDate = dateKey;
+
+            // Format date for display
+            const date = new Date(dateKey);
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDate = date.toLocaleDateString('en-US', options);
+
+            // Show the modal
+            document.getElementById('selectedDateDisplay').textContent = formattedDate;
+            document.getElementById('addEventModal').style.display = 'block';
+
+            // Reset form
+            document.getElementById('eventTitleInput').value = '';
+            document.getElementById('eventDescriptionInput').value = '';
+            document.getElementById('eventTimeInput').value = '';
+
+            // Clear category selection
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+
+            // Focus on title input
+            document.getElementById('eventTitleInput').focus();
+        }
+
+        function hideAddEventModal() {
+            document.getElementById('addEventModal').style.display = 'none';
+            selectedEventDate = null;
+        }
+
+        // Category button selection handler
+        document.addEventListener('click', function (event) {
+            if (event.target.classList.contains('category-btn')) {
+                // Remove selection from all buttons
+                document.querySelectorAll('.category-btn').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+
+                // Add selection to clicked button
+                event.target.classList.add('selected');
+            }
+        });
+
+        async function submitEvent() {
+            const title = document.getElementById('eventTitleInput').value.trim();
+            const description = document.getElementById('eventDescriptionInput').value.trim();
+            const time = document.getElementById('eventTimeInput').value.trim();
+
+            // Get selected category
+            const selectedCategoryBtn = document.querySelector('.category-btn.selected');
+            const category = selectedCategoryBtn ? selectedCategoryBtn.dataset.category : 'Academic';
+
+            if (!title) {
+                alert('Please enter an event title');
+                return;
+            }
+
+            if (!selectedEventDate) {
+                alert('Error: No date selected');
+                return;
+            }
+
+            // Disable submit button during request
+            const submitBtn = document.getElementById('addEventBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Adding...';
+
+            try {
+                const response = await fetch(API_BASE_URL + '/api/calendar/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: currentEmailAccountId,
+                        event_data: {
+                            title: title,
+                            description: description,
+                            date: selectedEventDate,
+                            time: time || 'All Day',
+                            category: category
+                        }
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Store the current date and selected date BEFORE hiding modal or loading events
+                    const savedCalendarDate = new Date(currentCalendarDate);
+                    const savedSelectedDate = selectedEventDate;
+
+                    // Hide modal
+                    hideAddEventModal();
+
+                    // Temporarily set currentCalendarDate to the saved value to prevent reset
+                    currentCalendarDate = savedCalendarDate;
+
+                    // Reload calendar events to reflect the new event
+                    await loadCalendarEvents();
+
+                    // Re-select the date that was modified and show updated details
+                    const dayCell = document.querySelector(`[data-date="${savedSelectedDate}"]`);
+                    if (dayCell) {
+                        dayCell.classList.add('selected');
+                        selectedDateElement = dayCell;
+                    }
+
+                    // Show the updated event details
+                    showEventDetails(savedSelectedDate);
+                } else {
+                    alert('Error creating event: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error creating event:', error);
+                alert('Error creating event. Please try again.');
+            } finally {
+                // Re-enable submit button
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add Event';
+            }
+        }
+
+        // Global variables for edit/delete operations
+        let editingEventDate = null;
+        let editingEventIndex = null;
+        let deletingEventDate = null;
+        let deletingEventIndex = null;
+
+        function editEvent(dateKey, eventIndex) {
+            if (!currentEmailAccountId) {
+                alert('Please select a user first');
+                return;
+            }
+
+            const event = calendarEvents[dateKey][eventIndex];
+            editingEventDate = dateKey;
+            editingEventIndex = eventIndex;
+
+            // Format date for display
+            const date = new Date(dateKey);
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDate = date.toLocaleDateString('en-US', options);
+
+            // Populate the edit modal
+            document.getElementById('editEventTitleInput').value = event.title || '';
+            document.getElementById('editEventDescriptionInput').value = event.description || '';
+            document.getElementById('editEventTimeInput').value = event.time || '';
+            document.getElementById('editEventDateDisplay').textContent = formattedDate;
+
+            // Select the correct category
+            document.querySelectorAll('.edit-category-buttons .category-btn').forEach(btn => {
+                btn.classList.remove('selected');
+                if (btn.dataset.category === event.category) {
+                    btn.classList.add('selected');
+                }
+            });
+
+            // Show the modal
+            document.getElementById('editEventModal').style.display = 'block';
+            document.getElementById('editEventTitleInput').focus();
+        }
+
+        function hideEditEventModal() {
+            document.getElementById('editEventModal').style.display = 'none';
+            editingEventDate = null;
+            editingEventIndex = null;
+        }
+
+        function handleEditEventModalKeyPress(event) {
+            if (event.key === 'Enter') {
+                submitEditEvent();
+            } else if (event.key === 'Escape') {
+                hideEditEventModal();
+            }
+        }
+
+        // Category button selection for edit modal
+        document.addEventListener('click', function (event) {
+            if (event.target.classList.contains('category-btn') &&
+                event.target.closest('.edit-category-buttons')) {
+                document.querySelectorAll('.edit-category-buttons .category-btn').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+                event.target.classList.add('selected');
+            }
+        });
+
+        async function submitEditEvent() {
+            const title = document.getElementById('editEventTitleInput').value.trim();
+            const description = document.getElementById('editEventDescriptionInput').value.trim();
+            const time = document.getElementById('editEventTimeInput').value.trim();
+
+            const selectedCategoryBtn = document.querySelector('.edit-category-buttons .category-btn.selected');
+            const category = selectedCategoryBtn ? selectedCategoryBtn.dataset.category : 'Academic';
+
+            if (!title) {
+                alert('Please enter an event title');
+                return;
+            }
+
+            const event = calendarEvents[editingEventDate][editingEventIndex];
+            const submitBtn = document.getElementById('editEventBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/calendar/events/${event.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: currentEmailAccountId,
+                        event_data: {
+                            title: title,
+                            description: description,
+                            date: editingEventDate,
+                            time: time || 'All Day',
+                            category: category
+                        }
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Store the current date and editing date BEFORE hiding modal or loading events
+                    const savedCalendarDate = new Date(currentCalendarDate);
+                    const savedEditingDate = editingEventDate;
+
+                    hideEditEventModal();
+
+                    // Temporarily set currentCalendarDate to the saved value to prevent reset
+                    currentCalendarDate = savedCalendarDate;
+
+                    await loadCalendarEvents();
+
+                    // Re-select the date that was modified and show updated details
+                    const dayCell = document.querySelector(`[data-date="${savedEditingDate}"]`);
+                    if (dayCell) {
+                        dayCell.classList.add('selected');
+                        selectedDateElement = dayCell;
+                    }
+
+                    // Show the updated event details
+                    showEventDetails(savedEditingDate);
+                } else {
+                    alert('Error updating event: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error updating event:', error);
+                alert('Error updating event. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save Changes';
+            }
+        }
+
+        function deleteEvent(dateKey, eventIndex) {
+            if (!currentEmailAccountId) {
+                alert('Please select a user first');
+                return;
+            }
+
+            const event = calendarEvents[dateKey][eventIndex];
+            deletingEventDate = dateKey;
+            deletingEventIndex = eventIndex;
+
+            // Populate the delete confirmation modal
+            document.getElementById('deleteEventTitle').textContent = event.title || 'Untitled Event';
+
+            let details = '';
+            if (event.time) details += event.time;
+            if (event.category) details += (details ? ' • ' : '') + event.category;
+            if (event.description) details += (details ? ' • ' : '') + event.description;
+
+            document.getElementById('deleteEventDetails').textContent = details || 'No additional details';
+
+            // Show the modal
+            document.getElementById('deleteEventModal').style.display = 'block';
+        }
+
+        function hideDeleteEventModal() {
+            document.getElementById('deleteEventModal').style.display = 'none';
+            deletingEventDate = null;
+            deletingEventIndex = null;
+        }
+
+        async function confirmDeleteEvent() {
+            const event = calendarEvents[deletingEventDate][deletingEventIndex];
+            const deleteBtn = document.getElementById('deleteEventBtn');
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/calendar/events/${event.id}?email_account_id=${currentEmailAccountId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Store the current date and deleting date BEFORE hiding modal or loading events
+                    const savedCalendarDate = new Date(currentCalendarDate);
+                    const savedDeletingDate = deletingEventDate;
+
+                    hideDeleteEventModal();
+
+                    // Temporarily set currentCalendarDate to the saved value to prevent reset
+                    currentCalendarDate = savedCalendarDate;
+
+                    await loadCalendarEvents();
+
+                    // Re-select the date that was modified and show updated details
+                    const dayCell = document.querySelector(`[data-date="${savedDeletingDate}"]`);
+                    if (dayCell) {
+                        dayCell.classList.add('selected');
+                        selectedDateElement = dayCell;
+                    }
+
+                    // Show the updated event details
+                    showEventDetails(savedDeletingDate);
+                } else {
+                    alert('Error deleting event: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error deleting event:', error);
+                alert('Error deleting event. Please try again.');
+            } finally {
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = 'Delete Event';
+            }
+        }        // Load calendar events from API (includes both regular and Moodle events)
+        async function loadCalendarEvents() {
+            if (!currentEmailAccountId) return;
+
+            try {
+                // Fetch both regular calendar events and Moodle events in parallel
+                const [regularResponse, moodleResponse] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/calendar/events?email_account_id=${currentEmailAccountId}`),
+                    fetch(`${API_BASE_URL}/api/calendar/moodle?email_account_id=${currentEmailAccountId}`)
+                ]);
+
+                // Process regular calendar events
+                let regularEvents = {};
+                if (regularResponse.ok) {
+                    const regularResult = await regularResponse.json();
+                    if (regularResult.status === 'success') {
+                        regularEvents = regularResult.events || {};
+                    } else if (regularResult.status === 'auth_required') {
+                        console.log('Calendar authentication required - user needs to connect Gmail');
+                        // Don't trigger OAuth popup automatically - let user initiate it
+                        initializeSampleEvents();
+                        return;
+                    }
+                } else {
+                    console.log('Calendar API returned error:', regularResponse.status);
+                }
+
+                // Process Moodle events
+                let moodleEvents = {};
+                if (moodleResponse.ok) {
+                    const moodleResult = await moodleResponse.json();
+                    if (moodleResult.status === 'success') {
+                        moodleEvents = moodleResult.events || {};
+                        console.log(`Loaded ${moodleResult.count || 0} Moodle events`);
+
+                        // Check for new Moodle events and update notification badge
+                        checkForNewEvents(moodleEvents);
+                    }
+                } else {
+                    console.log('Moodle calendar not available or auth required');
+                }
+
+                // Merge events: combine regular and Moodle events by date
+                calendarEvents = { ...regularEvents };
+                for (const [date, events] of Object.entries(moodleEvents)) {
+                    if (calendarEvents[date]) {
+                        // Append Moodle events to existing date
+                        calendarEvents[date] = [...calendarEvents[date], ...events];
+                    } else {
+                        // Create new date entry with Moodle events
+                        calendarEvents[date] = events;
+                    }
+                }
+
+                // Reset to current date and update navigation buttons
+                initialCalendarDate = new Date();
+                currentCalendarDate = new Date();
+                updateNavigationButtons();
+                renderCalendar();
+            } catch (error) {
+                console.error('Error loading calendar events:', error);
+                // Initialize with sample events as fallback
+                initializeSampleEvents();
+            }
+        }
+
+        // Handle authentication required
+        let authPromptShown = false; // Prevent infinite loop
+        function handleAuthRequired(authUrl) {
+            if (authPromptShown) {
+                console.log('Auth prompt already shown, skipping to prevent loop');
+                return;
+            }
+            authPromptShown = true;
+
+            if (confirm('Google Calendar authentication is required. Click OK to authenticate in a new window.')) {
+                window.open(authUrl, 'auth', 'width=500,height=600');
+                // Reset flag after 5 seconds to allow retry
+                setTimeout(() => { authPromptShown = false; }, 5000);
+            } else {
+                // User declined, don't show again this session
+                console.log('User declined calendar authentication');
+            }
+        }
+
+        // Initialize calendar with sample events
+        function initializeSampleEvents() {
+            // Add some sample events matching the image
+            calendarEvents['2025-10-15'] = [
+                { title: 'Team Meeting', category: 'Career', time: '2:00 PM' }
+            ];
+            calendarEvents['2025-10-20'] = [
+                { title: 'Project Due', category: 'Academic', time: '11:59 PM' }
+            ];
+            calendarEvents['2025-10-25'] = [
+                { title: 'Birthday Party', category: 'Social', time: '7:00 PM' }
+            ];
+
+            renderCalendar();
+        }
+
+        // Initialize calendar
+        function initializeCalendar() {
+            updateNavigationButtons();
+            renderCalendar();
+            if (currentEmailAccountId) {
+                loadCalendarEvents();
+            } else {
+                initializeSampleEvents();
+            }
+        }
+
+        // Schedule calendar refresh at midnight (when day changes)
+        function scheduleMidnightRefresh() {
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 1, 0); // 1 second after midnight
+
+            const msUntilMidnight = tomorrow - now;
+
+            setTimeout(() => {
+                // Day has changed - refresh calendar events (includes Moodle)
+                if (currentEmailAccountId) {
+                    loadCalendarEvents();
+                } else {
+                    renderCalendar(); // Just re-render to update "today" highlighting
+                }
+
+                // Schedule the next midnight refresh
+                scheduleMidnightRefresh();
+            }, msUntilMidnight);
+        }
+
+        // Load users and emails when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadUsers();
+            initializeCalendar();
+            scheduleMidnightRefresh();
+        });
+    </script>
+
+    <!-- Notification Modal -->
+    <div id="notificationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>New Calendar Events</h3>
+                <span class="close" onclick="hideNotificationModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="notificationList" class="notification-list">
+                    <!-- Notification items will be rendered here -->
+                </div>
+                <div id="noNotifications" class="no-notifications" style="display: none;">
+                    <p>No new events</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="modal-button primary" onclick="hideNotificationModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Gmail Account</h3>
+                <span class="close" onclick="hideAddUserModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="emailInput">Gmail Address *</label>
+                    <input type="email" id="emailInput" placeholder="user@gmail.com"
+                        onkeypress="handleModalKeyPress(event)" required>
+                </div>
+                <div class="form-group">
+                    <label for="nameInput">Display Name (optional)</label>
+                    <input type="text" id="nameInput" placeholder="John Doe" onkeypress="handleModalKeyPress(event)">
+                </div>
+                <p class="modal-note">
+                    Your browser will open for Gmail authentication after clicking "Add Account".
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="modal-button cancel" onclick="hideAddUserModal()">Cancel</button>
+                <button type="button" class="modal-button primary" id="addAccountBtn" onclick="addGmailAccount()">Add
+                    Account</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Event Modal -->
+    <div id="addEventModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Calendar Event</h3>
+                <span class="close" onclick="hideAddEventModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="eventTitleInput">Event Title *</label>
+                    <input type="text" id="eventTitleInput" placeholder="Enter event title" required
+                        onkeypress="handleEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label for="eventDescriptionInput">Description</label>
+                    <input type="text" id="eventDescriptionInput" placeholder="Enter description (optional)"
+                        onkeypress="handleEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label for="eventTimeInput">Time</label>
+                    <input type="text" id="eventTimeInput" placeholder="e.g., 2:00 PM or leave empty for all-day"
+                        onkeypress="handleEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label>Category *</label>
+                    <div class="category-buttons">
+                        <button type="button" class="category-btn" data-category="Academic">Academic</button>
+                        <button type="button" class="category-btn" data-category="Social">Social</button>
+                        <button type="button" class="category-btn" data-category="Career">Career</button>
+                        <button type="button" class="category-btn" data-category="Deadline">Deadline</button>
+                    </div>
+                </div>
+                <p class="modal-note">
+                    Event will be added to <span id="selectedDateDisplay"></span>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="modal-button cancel" onclick="hideAddEventModal()">Cancel</button>
+                <button type="button" class="modal-button primary" id="addEventBtn" onclick="submitEvent()">Add
+                    Event</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Event Modal -->
+    <div id="editEventModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Calendar Event</h3>
+                <span class="close" onclick="hideEditEventModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="editEventTitleInput">Event Title *</label>
+                    <input type="text" id="editEventTitleInput" placeholder="Enter event title" required
+                        onkeypress="handleEditEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label for="editEventDescriptionInput">Description</label>
+                    <input type="text" id="editEventDescriptionInput" placeholder="Enter description (optional)"
+                        onkeypress="handleEditEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label for="editEventTimeInput">Time</label>
+                    <input type="text" id="editEventTimeInput" placeholder="e.g., 2:00 PM or leave empty for all-day"
+                        onkeypress="handleEditEventModalKeyPress(event)">
+                </div>
+                <div class="form-group">
+                    <label>Category *</label>
+                    <div class="edit-category-buttons">
+                        <button type="button" class="category-btn" data-category="Academic">Academic</button>
+                        <button type="button" class="category-btn" data-category="Social">Social</button>
+                        <button type="button" class="category-btn" data-category="Career">Career</button>
+                        <button type="button" class="category-btn" data-category="Deadline">Deadline</button>
+                    </div>
+                </div>
+                <p class="modal-note">
+                    Editing event on <span id="editEventDateDisplay"></span>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="modal-button cancel" onclick="hideEditEventModal()">Cancel</button>
+                <button type="button" class="modal-button primary" id="editEventBtn" onclick="submitEditEvent()">Save
+                    Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Event Confirmation Modal -->
+    <div id="deleteEventModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Delete Event</h3>
+                <span class="close" onclick="hideDeleteEventModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="margin: 20px 0; text-align: center;">
+                    Are you sure you want to delete this event?
+                </p>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <div style="font-weight: 600; margin-bottom: 8px;" id="deleteEventTitle"></div>
+                    <div style="color: #666; font-size: 0.9em;" id="deleteEventDetails"></div>
+                </div>
+                <p style="color: #dc3545; font-size: 0.9em; text-align: center;">
+                    This action cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="modal-button cancel" onclick="hideDeleteEventModal()">Cancel</button>
+                <button type="button" class="modal-button danger" id="deleteEventBtn"
+                    onclick="confirmDeleteEvent()">Delete Event</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

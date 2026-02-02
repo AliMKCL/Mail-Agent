@@ -15,8 +15,8 @@
                 <form id="topSearchForm" onsubmit="onTopSearchSubmit(event)" class="top-search-form">
                     <!-- AI Sparkle Icon -->
                     <svg class="top-search-icon" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2L9.5 9.5L2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z"/>
-                        <circle cx="12" cy="12" r="2" fill="currentColor" opacity="0.8"/>
+                        <path d="M12 2L9.5 9.5L2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5L12 2z" />
+                        <circle cx="12" cy="12" r="2" fill="currentColor" opacity="0.8" />
                     </svg>
                     <input id="AISearchInput" type="search" placeholder="Ask AI Assistant anything..."
                         aria-label="Ask AI Assistant" class="top-search-input" />
@@ -211,7 +211,8 @@
     <script>
         let emails = [];
         let users = [];
-        let currentUserId = null;
+        // Load email_account_id from localStorage (set during sign-up)
+        let currentEmailAccountId = localStorage.getItem('email_account_id') ? parseInt(localStorage.getItem('email_account_id')) : null;
 
         // Calendar variables
         let currentCalendarDate = new Date();
@@ -1249,15 +1250,15 @@
         function updateNavigationButtons() {
             const prevBtn = document.getElementById('prevMonth');
             const nextBtn = document.getElementById('nextMonth');
-            
+
             if (!prevBtn || !nextBtn) return; // Safety check
-            
+
             // Calculate month difference from initial date
-            const monthDiff = (currentCalendarDate.getFullYear() - initialCalendarDate.getFullYear()) * 12 
-                            + (currentCalendarDate.getMonth() - initialCalendarDate.getMonth());
-            
+            const monthDiff = (currentCalendarDate.getFullYear() - initialCalendarDate.getFullYear()) * 12
+                + (currentCalendarDate.getMonth() - initialCalendarDate.getMonth());
+
             console.log('Month difference:', monthDiff); // Debug log
-            
+
             // Disable prev button if we're 6 months back (or more)
             if (monthDiff <= -6) {
                 prevBtn.disabled = true;
@@ -1268,7 +1269,7 @@
                 prevBtn.classList.remove('disabled');
                 console.log('Left button enabled');
             }
-            
+
             // Disable next button if we're 24 months (2 years) forward (or more)
             if (monthDiff >= 24) {
                 nextBtn.disabled = true;
