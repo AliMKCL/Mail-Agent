@@ -116,6 +116,7 @@ func operateEmails(
 }
 
 // Fetches mails, adds to db and embeds them. Returns the mails.
+// Takes around 2 minutes to fetch store and embed 150 mails.
 func fetchWorker(service *gmail.Service, ids []string, emailAccountID int) []EmailWithEmbedding {
 	var emails []map[string]interface{} // Slice of emails (with key string, value any / interface{})
 	var jobsChan = make(chan string, len(ids))

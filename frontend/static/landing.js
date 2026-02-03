@@ -104,6 +104,16 @@ authForm.addEventListener('submit', async (e) => {
 
             if (response.ok) {
                 console.log('Sign-in successful:', data);
+                // Clear old session data first
+                localStorage.clear();
+
+                // Store account_id and email_account_id from response
+                if (data.account_id) {
+                    localStorage.setItem('account_id', data.account_id);
+                }
+                if (data.email_account_id) {
+                    localStorage.setItem('email_account_id', data.email_account_id);
+                }
                 // Store token if your backend returns one
                 if (data.token) {
                     localStorage.setItem('authToken', data.token);
@@ -132,6 +142,9 @@ authForm.addEventListener('submit', async (e) => {
 
             if (response.ok) {
                 console.log('Sign-up successful:', data);
+                // Clear old session data first
+                localStorage.clear();
+
                 // Store email_account_id for use in the main app
                 if (data.email_account_id) {
                     localStorage.setItem('email_account_id', data.email_account_id);

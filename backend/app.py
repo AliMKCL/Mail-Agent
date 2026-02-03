@@ -33,6 +33,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 import requests
+import hashlib
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/..")
@@ -69,13 +70,14 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar'
 ]
 
-USER_ID_FOR_CALENDAR = 1
+EMAIL_ACCOUNT_ID_FOR_CALENDAR = 1  # Default email account for calendar operations
 
 
 # Pydantic models
 class UserCreateRequest(BaseModel):
     email: str
     name: Optional[str] = None
+    account_id: Optional[int] = None  # Required when adding email account from dropdown
 
 class SignInRequest(BaseModel):
     email: str
@@ -121,18 +123,42 @@ async def sign_in(credentials: SignInRequest):
     Validates credentials and returns success/failure
     """
     try:
+        accounts = db_manager.get_all_accounts()
+
+        password = credentials.password
+
+        sha256_hash = hashlib.sha256()
         
-        # Placeholder credentials validation
-        if credentials.email == "test@gmail.com" and credentials.password == "t":
-            return {
-                "status": "success",
-                "message": "Sign-in successful"
-            }
-        else:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password"
-            )
+        sha256_hash.update(password.encode("utf-8")) # hashlib requires bytes, not a plain string
+        hashed_password = sha256_hash.hexdigest()
+
+        for i in accounts:
+            if i.primary_email == credentials.email and i.password_hash == hashed_password:
+                # Get primary email account for this account
+                primary_email_accounts = db_manager.get_account_email_accounts(i.id)
+                primary_email_account_id = None
+                if primary_email_accounts and len(primary_email_accounts) > 0:
+                    # Find the primary one or use first
+                    for ea in primary_email_accounts:
+                        if ea.is_primary:
+                            primary_email_account_id = ea.id
+                            break
+                    if not primary_email_account_id:
+                        primary_email_account_id = primary_email_accounts[0].id
+                
+                print(f"[/api/auth/signin] Sign-in successful for account_id={i.id}, email_account_id={primary_email_account_id}")
+                return {
+                    "status": "success",
+                    "message": "Sign-in successful",
+                    "account_id": i.id,
+                    "email_account_id": primary_email_account_id
+                }
+
+        # If we get here, no account matched
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
             
     except HTTPException:
         raise
@@ -148,13 +174,13 @@ async def sign_up(credentials: SignUpRequest):
     try:
         email = credentials.email
         password = credentials.password
-        
-        # TODO: Hash the password here (you'll add this yourself)
-        # For now, using placeholder - REPLACE THIS!
-        password_hash = "PLACEHOLDER_HASH"  # <-- ADD YOUR HASHING HERE
-        
+
+        sha256_hash = hashlib.sha256()
+        sha256_hash.update(password.encode("utf-8"))
+        hashed_password = sha256_hash.hexdigest()
+
         # Create main account for login
-        account = db_manager.get_or_create_account(email, password_hash)
+        account = db_manager.get_or_create_account(email, hashed_password)
         
         # Create email account for this Gmail address
         email_account = db_manager.get_or_create_email_account(
@@ -316,7 +342,7 @@ async def sync_emails(email_account_id: Optional[int] = None):
         
         # Fetch email IDs from Gmail Primary inbox only
         print(f"DEBUG: About to call list_message_ids with query='{final_query}'")
-        ids = list_message_ids(service, query=final_query, max_results=150)
+        ids = list_message_ids(service, query=final_query, max_results=60)
         print(f"DEBUG: Found {len(ids)} email IDs")
 
         if ids:
@@ -404,10 +430,19 @@ async def sync_emails(email_account_id: Optional[int] = None):
 
 # This endpoint is called to retrieve all users from the database.
 @app.get("/api/users")
-async def get_users():
-    """Get all users from the database"""
+async def get_users(account_id: Optional[int] = None):
+    """Get email accounts for a specific account (or all if no account_id provided)"""
     try:
-        users = db_manager.get_all_email_accounts()
+        print(f"[/api/users] Received account_id parameter: {account_id}")
+        if account_id:
+            # Filter by specific account
+            users = db_manager.get_account_email_accounts(account_id)
+            print(f"[/api/users] Filtered email accounts for account_id={account_id}: {len(users)} found")
+        else:
+            # Return all (for backward compatibility or admin use)
+            users = db_manager.get_all_email_accounts()
+            print(f"[/api/users] Returning ALL email accounts: {len(users)} found")
+        
         result = []
         for user in users:
             # Check if user has OAuth credentials
@@ -455,32 +490,53 @@ async def get_email_account_info(email_account_id: int):
         raise HTTPException(status_code=500, detail=f"Error fetching email account info: {str(e)}")
 
 
-# This endpoint is called when creating a new user and initiating the OAuth flow.
+# This endpoint is called when creating a new email account via the dropdown menu.
 @app.post("/api/users")
 async def create_user_and_auth(user_data: UserCreateRequest):
-    """Create a new user and initiate OAuth flow"""
+    """Add a new email account to the logged-in user's account"""
     try:
         email = user_data.email
         name = user_data.name
+        account_id = user_data.account_id
         
         if not email:
             raise HTTPException(status_code=400, detail="Email is required")
         
-        # Create or get user
-        user = db_manager.get_or_create_user(email, name)
+        if not account_id:
+            raise HTTPException(status_code=400, detail="account_id is required. User must be logged in to add email accounts.")
         
-        # Trigger OAuth flow for this user
-        service = get_service(user.id)
+        # Verify the account exists
+        with db_manager.get_session() as session:
+            from backend.databases.database import Account
+            account = session.query(Account).filter_by(id=account_id).first()
+            if not account:
+                raise HTTPException(status_code=404, detail=f"Account with id {account_id} not found")
         
+        # Create email account linked to the existing account
+        # This does NOT create a new Account, only an EmailAccount
+        email_account = db_manager.get_or_create_email_account(
+            account_id=account_id,
+            email=email,
+            provider='gmail',
+            is_primary=False  # Additional email accounts are not primary
+        )
+        
+        # Return email account info (frontend expects this structure)
         return {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "created_at": user.created_at.isoformat(),
-            "message": "User created and OAuth completed successfully"
+            "id": email_account.id,
+            "email": email_account.email,
+            "account_id": email_account.account_id,
+            "is_primary": email_account.is_primary,
+            "created_at": email_account.created_at.isoformat(),
+            "message": "Email account added successfully. Please authenticate with Google."
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
+        print(f"Error in create_user_and_auth: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error creating email account: {str(e)}")
 
 # This endpoint is called to fetch calendar events for a user within a date range.
 @app.get("/api/calendar/events")
@@ -494,7 +550,7 @@ async def get_calendar_events(email_account_id: Optional[int] = None, start_date
         
         # Get calendar service
         try:
-            service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+            service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
         except Exception as e:
             print(f"Exception in get_calendar_service: {e}")
             raise HTTPException(status_code=500, detail=f"Calendar service error: {str(e)}")
@@ -616,7 +672,7 @@ async def create_calendar_event(request_data: dict):
         
         # Get calendar service
         try:
-            service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+            service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
         except Exception as e:
             print(f"Exception in get_calendar_service (POST): {e}")
             raise HTTPException(status_code=500, detail=f"Calendar service error: {str(e)}")
@@ -711,7 +767,7 @@ async def update_calendar_event(event_id: str, request_data: dict):
             raise HTTPException(status_code=400, detail="email_account_id is required")
         
         # Get calendar service
-        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -785,7 +841,7 @@ async def delete_calendar_event(event_id: str, email_account_id: int):
             raise HTTPException(status_code=400, detail="email_account_id is required")
         
         # Get calendar service
-        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -881,25 +937,25 @@ async def oauth_callback(code: str, state: Optional[str] = None):
 async def check_calendar_status():
     """Check if calendar service is available"""
     try:
-        service, error = get_calendar_service(USER_ID_FOR_CALENDAR)
+        service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
         if service:
             return {
                 "status": "success",
-                "message": f"Calendar service is working for user {USER_ID_FOR_CALENDAR}",
-                "user_id": USER_ID_FOR_CALENDAR
+                "message": f"Calendar service is working for email account {EMAIL_ACCOUNT_ID_FOR_CALENDAR}",
+                "email_account_id": EMAIL_ACCOUNT_ID_FOR_CALENDAR
             }
         else:
             return {
                 "status": "error",
                 "message": f"Calendar service failed: {error}",
-                "user_id": USER_ID_FOR_CALENDAR,
+                "email_account_id": EMAIL_ACCOUNT_ID_FOR_CALENDAR,
                 "error": error
             }
     except Exception as e:
         return {
             "status": "error",
             "message": f"Exception: {str(e)}",
-            "user_id": USER_ID_FOR_CALENDAR
+            "email_account_id": EMAIL_ACCOUNT_ID_FOR_CALENDAR
         }
 
 # This endpoint is called to fetch Moodle calendar events from the subscribed calendar.
@@ -911,7 +967,7 @@ async def get_moodle_calendar_events(email_account_id: Optional[int] = None, sta
     """
     try:
         if email_account_id is None:
-            email_account_id = USER_ID_FOR_CALENDAR
+            email_account_id = EMAIL_ACCOUNT_ID_FOR_CALENDAR
 
         result = get_moodle_events_for_api(email_account_id, start_date, end_date)
 
@@ -1057,7 +1113,7 @@ async def llm_query_endpoint(request_data: dict):
     Request body:
     {
         "query": "Find deadlines in my emails and add them to calendar",
-        "user_id": 1,
+        "email_account_id": 1,
         "use_openai": true  // optional, defaults to true
     }
     """
