@@ -1,13 +1,15 @@
 """
-MCP Server for Gmail Calendar Agent
+MCP Server for Gmail Calendar Agent - Updated for new database schema
+
 Exposes email and calendar functions as MCP tools for LLM integration
+
+Updated for new database schema:
+- Account: The logged-in user (account_id from accounts table)
+- EmailAccount: A connected Gmail/Outlook account (email_account_id from email_accounts table)
+- Email: Email messages linked to EmailAccounts
 """
 
-# Run the testing UI env: npx @modelcontextprotocol/inspector python backend/mcp_server.py
-
-"""
-Known problems:
-"""
+# Run the testing UI env: npx @modelcontextprotocol/inspector python backend/mcp_server2.py
 
 import sys
 import os
@@ -25,8 +27,8 @@ from datetime import datetime, timedelta
 
 from fastmcp import FastMCP
 
-# Import existing backend components
-from backend.databases.database import DatabaseManager, User, Email
+# Import existing backend components (updated for new schema)
+from backend.databases.database import DatabaseManager, Account, EmailAccount, Email
 from backend.services.gmail_read import get_service, list_message_ids, prepare_email_data
 from backend.services.setup_calendar import get_calendar_service
 from backend.services.moodle_calendar import get_moodle_events_for_api
@@ -44,19 +46,19 @@ mcp = FastMCP("Mail Agent")
 # Initialize database manager
 db_manager = DatabaseManager()
 
-# Constants
-CALENDAR_USER_ID = 1  # Calendar operations always use user ID 1 (main account)
+# Constants - Updated for new schema
+CALENDAR_EMAIL_ACCOUNT_ID = 1  # Calendar operations use email_account ID 1 (main email account)
 
 # Global context - only for tracking, not enforcing user restrictions
-# Email operations can work across all users (LLM can specify user_id in queries)
-# Calendar operations always use CALENDAR_USER_ID
+# Email operations can work across all email accounts (LLM can specify email_account_id in queries)
+# Calendar operations always use CALENDAR_EMAIL_ACCOUNT_ID
 context = {
     "last_sync_time": None
 }
 
 
 # Helper function to save credentials after calendar operations
-def save_calendar_credentials_after_use(service, user_id):
+def save_calendar_credentials_after_use(service, email_account_id):
     """
     Save potentially refreshed credentials after calendar service use.
     Google's library may auto-refresh tokens during API calls.
@@ -65,8 +67,8 @@ def save_calendar_credentials_after_use(service, user_id):
         if hasattr(service, '_http') and hasattr(service._http, 'credentials'):
             creds = service._http.credentials
             if creds:
-                db_manager.save_user_token(user_id, creds)
-                logger.debug(f"Saved potentially refreshed credentials for user {user_id}")
+                db_manager.save_email_token(email_account_id, creds)
+                logger.debug(f"Saved potentially refreshed credentials for email account {email_account_id}")
     except Exception as e:
         logger.warning(f"Could not save credentials after calendar operation: {e}")
 
@@ -75,79 +77,166 @@ def save_calendar_credentials_after_use(service, user_id):
 # MCP TOOLS - Functions the LLM can execute
 # ============================================================================
 
-# --- User Management Tools ---
+# --- Account Management Tools ---
 
 @mcp.tool()
-async def list_users() -> dict:
+async def list_accounts() -> dict:
     """
-    List all registered Gmail users in the system.
-    Returns user information including id, email, and name.
+    List all registered accounts in the system.
+    Returns account information including id, primary_email for each account.
     """
     try:
-        users = db_manager.get_all_users()
-        user_list = [
+        accounts = db_manager.get_all_accounts()
+        account_list = [
             {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name
+                "id": account.id,
+                "primary_email": account.primary_email,
+                "created_at": account.created_at.isoformat() if account.created_at else None
             }
-            for user in users
+            for account in accounts
         ]
-        logger.info(f"Listed {len(user_list)} users")
+        logger.info(f"Listed {len(account_list)} accounts")
         return {
             "status": "success",
-            "users": user_list,
-            "count": len(user_list)
+            "accounts": account_list,
+            "count": len(account_list)
         }
     except Exception as e:
-        logger.error(f"Error listing users: {e}")
+        logger.error(f"Error listing accounts: {e}")
         return {"status": "error", "error": str(e)}
 
 
 @mcp.tool()
-async def get_user_info(user_id: int) -> dict:
+async def list_email_accounts(account_id: Optional[int] = None) -> dict:
     """
-    Get detailed information about a specific user by their ID.
+    List all email accounts (Gmail/Outlook) in the system.
+    
+    Args:
+        account_id: Optional - if provided, only returns email accounts for this account
+    
+    Returns account information including id, email, provider, account_id.
+    """
+    try:
+        if account_id is not None:
+            email_accounts = db_manager.get_account_email_accounts(account_id)
+        else:
+            email_accounts = db_manager.get_all_email_accounts()
+            
+        email_account_list = [
+            {
+                "id": ea.id,
+                "email": ea.email,
+                "provider": ea.provider,
+                "account_id": ea.account_id,
+                "is_primary": bool(ea.is_primary)
+            }
+            for ea in email_accounts
+        ]
+        logger.info(f"Listed {len(email_account_list)} email accounts")
+        return {
+            "status": "success",
+            "email_accounts": email_account_list,
+            "count": len(email_account_list)
+        }
+    except Exception as e:
+        logger.error(f"Error listing email accounts: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@mcp.tool()
+async def get_account_info(account_id: int) -> dict:
+    """
+    Get detailed information about a specific account by their ID.
 
     Args:
-        user_id: The ID of the user to retrieve
+        account_id: The ID of the account to retrieve
     """
     try:
         with db_manager.get_session() as session:
-            user = session.query(User).filter_by(id=user_id).first()
-            if not user:
-                return {"status": "error", "error": f"User with ID {user_id} not found"}
+            account = session.query(Account).filter_by(id=account_id).first()
+            if not account:
+                return {"status": "error", "error": f"Account with ID {account_id} not found"}
 
+            # Get email accounts for this account
+            email_accounts = session.query(EmailAccount).filter_by(account_id=account_id).all()
+            
             return {
                 "status": "success",
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "name": user.name,
-                    "created_at": user.created_at.isoformat() if user.created_at else None
+                "account": {
+                    "id": account.id,
+                    "primary_email": account.primary_email,
+                    "created_at": account.created_at.isoformat() if account.created_at else None,
+                    "email_accounts_count": len(email_accounts),
+                    "email_accounts": [
+                        {
+                            "id": ea.id,
+                            "email": ea.email,
+                            "provider": ea.provider,
+                            "is_primary": bool(ea.is_primary)
+                        }
+                        for ea in email_accounts
+                    ]
                 }
             }
     except Exception as e:
-        logger.error(f"Error getting user info: {e}")
+        logger.error(f"Error getting account info: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@mcp.tool()
+async def get_email_account_info(email_account_id: int) -> dict:
+    """
+    Get detailed information about a specific email account by ID.
+
+    Args:
+        email_account_id: The ID of the email account to retrieve
+    """
+    try:
+        with db_manager.get_session() as session:
+            email_account = session.query(EmailAccount).filter_by(id=email_account_id).first()
+            if not email_account:
+                return {"status": "error", "error": f"Email account with ID {email_account_id} not found"}
+
+            # Get parent account
+            account = session.query(Account).filter_by(id=email_account.account_id).first()
+            
+            # Count emails for this email account
+            email_count = session.query(Email).filter_by(email_account_id=email_account_id).count()
+
+            return {
+                "status": "success",
+                "email_account": {
+                    "id": email_account.id,
+                    "email": email_account.email,
+                    "provider": email_account.provider,
+                    "account_id": email_account.account_id,
+                    "is_primary": bool(email_account.is_primary),
+                    "account_primary_email": account.primary_email if account else None,
+                    "email_count": email_count,
+                    "created_at": email_account.created_at.isoformat() if email_account.created_at else None
+                }
+            }
+    except Exception as e:
+        logger.error(f"Error getting email account info: {e}")
         return {"status": "error", "error": str(e)}
 
 
 # --- Email Tools ---
 
 @mcp.tool()
-async def search_emails(query: str, user_id: Optional[int] = None, use_semantic: bool = False, limit: int = 10) -> dict:
+async def search_emails(query: str, email_account_id: Optional[int] = None, use_semantic: bool = False, limit: int = 10) -> dict:
     """
     Search emails using Gmail query syntax or semantic search across the vector database.
 
     Args:
         query: Search query (Gmail syntax like "from:example@gmail.com" or natural language for semantic search)
-        user_id: Optional user ID to filter emails. If not provided, searches across all users
+        email_account_id: Optional email account ID to filter emails. If not provided, searches across all email accounts
         use_semantic: If True, uses vector database semantic search; if False, uses Gmail API search
         limit: Maximum number of results to return (default: 10)
 
     Examples:
-        - search_emails("deadline", user_id=2, use_semantic=True)
-        - search_emails("from:professor@university.edu", user_id=1)
+        - search_emails("deadline", email_account_id=2, use_semantic=True)
+        - search_emails("from:professor@university.edu", email_account_id=1)
     """
     try:
         if use_semantic:
@@ -164,12 +253,12 @@ async def search_emails(query: str, user_id: Optional[int] = None, use_semantic:
                     "date": doc.metadata.get("date_sent"),
                     "snippet": doc.page_content[:200] if len(doc.page_content) > 200 else doc.page_content
                 }
-                # Filter by user_id if specified
-                if user_id is not None:
-                    # Get full email to check user_id
+                # Filter by email_account_id if specified
+                if email_account_id is not None:
+                    # Get full email to check email_account_id
                     with db_manager.get_session() as session:
                         email = session.query(Email).filter_by(message_id=result["message_id"]).first()
-                        if email and email.user_id == user_id:
+                        if email and email.email_account_id == email_account_id:
                             email_results.append(result)
                 else:
                     email_results.append(result)
@@ -181,18 +270,18 @@ async def search_emails(query: str, user_id: Optional[int] = None, use_semantic:
                 "search_type": "semantic"
             }
         else:
-            # Use Gmail API search - requires user_id
-            if user_id is None:
-                return {"status": "error", "error": "user_id required for Gmail API search"}
+            # Use Gmail API search - requires email_account_id
+            if email_account_id is None:
+                return {"status": "error", "error": "email_account_id required for Gmail API search"}
 
-            logger.info(f"Gmail API search for user {user_id}: '{query}'")
-            service = get_service(user_id)
+            logger.info(f"Gmail API search for email account {email_account_id}: '{query}'")
+            service = get_service(email_account_id)
             ids = list_message_ids(service, query=query, max_results=limit)
 
             # Get email details from database
             with db_manager.get_session() as session:
                 emails = session.query(Email).filter(
-                    Email.user_id == user_id,
+                    Email.email_account_id == email_account_id,
                     Email.message_id.in_(ids)
                 ).limit(limit).all()
 
@@ -219,22 +308,22 @@ async def search_emails(query: str, user_id: Optional[int] = None, use_semantic:
 
 
 @mcp.tool()
-async def sync_emails(user_id: int, max_results: int = 50) -> dict:
+async def sync_emails(email_account_id: int, max_results: int = 50) -> dict:
     """
-    Fetch new emails from Gmail for a specific user and store them in the database and vector store.
+    Fetch new emails from Gmail for a specific email account and store them in the database and vector store.
 
     Args:
-        user_id: The ID of the user whose emails to sync
+        email_account_id: The ID of the email account whose emails to sync
         max_results: Maximum number of emails to fetch (default: 50)
 
     Returns:
         Status of sync operation including counts of fetched and new emails
     """
     try:
-        logger.info(f"Syncing emails for user {user_id}, max_results: {max_results}")
+        logger.info(f"Syncing emails for email account {email_account_id}, max_results: {max_results}")
 
         # Get Gmail service
-        service = get_service(user_id)
+        service = get_service(email_account_id)
 
         # Fetch message IDs from Gmail
         ids = list_message_ids(service, query="in:inbox category:primary", max_results=max_results)
@@ -251,7 +340,7 @@ async def sync_emails(user_id: int, max_results: int = 50) -> dict:
         email_data = prepare_email_data(service, ids)
 
         # Save to database
-        saved_emails = db_manager.save_emails(user_id, email_data)
+        saved_emails = db_manager.save_emails(email_account_id, email_data)
 
         # Clean and prepare emails for embedding
         emails_for_embedding = []
@@ -315,7 +404,7 @@ async def get_email_details(message_id: str) -> dict:
                     "snippet": email.snippet,
                     "body_text": email.body_text,
                     "body_html": email.body_html,
-                    "user_id": email.user_id
+                    "email_account_id": email.email_account_id
                 }
             }
     except Exception as e:
@@ -324,21 +413,21 @@ async def get_email_details(message_id: str) -> dict:
 
 
 @mcp.tool()
-async def get_user_emails(user_id: int, limit: int = 50) -> dict:
+async def get_email_account_emails(email_account_id: int, limit: int = 50) -> dict:
     """
-    Get cached emails for a specific user from the database.
+    Get cached emails for a specific email account from the database.
 
     Args:
-        user_id: The ID of the user whose emails to retrieve
+        email_account_id: The ID of the email account whose emails to retrieve
         limit: Maximum number of emails to return (default: 50)
 
     Returns:
-        List of emails for the specified user
+        List of emails for the specified email account
     """
     try:
-        logger.info(f"Getting {limit} emails for user {user_id}")
+        logger.info(f"Getting {limit} emails for email account {email_account_id}")
 
-        emails = db_manager.get_user_emails(user_id, limit=limit)
+        emails = db_manager.get_email_account_emails(email_account_id, limit=limit)
 
         email_list = [
             {
@@ -356,10 +445,10 @@ async def get_user_emails(user_id: int, limit: int = 50) -> dict:
             "status": "success",
             "emails": email_list,
             "count": len(email_list),
-            "user_id": user_id
+            "email_account_id": email_account_id
         }
     except Exception as e:
-        logger.error(f"Error getting user emails: {e}")
+        logger.error(f"Error getting email account emails: {e}")
         return {"status": "error", "error": str(e)}
 
 
@@ -374,7 +463,7 @@ async def create_calendar_event(
     category: Optional[str] = None
 ) -> dict:
     """
-    Create a new calendar event. Always uses the main calendar account (user ID 1).
+    Create a new calendar event. Always uses the main calendar email account (email account ID 1).
 
     Args:
         title: Event title/summary
@@ -390,8 +479,8 @@ async def create_calendar_event(
     try:
         logger.info(f"Creating calendar event: {title} on {date}")
 
-        # Get calendar service (always uses CALENDAR_USER_ID)
-        service, error = get_calendar_service(CALENDAR_USER_ID)
+        # Get calendar service (always uses CALENDAR_EMAIL_ACCOUNT_ID)
+        service, error = get_calendar_service(CALENDAR_EMAIL_ACCOUNT_ID)
         if not service:
             return {"status": "error", "error": error}
 
@@ -434,7 +523,7 @@ async def create_calendar_event(
         created_event = service.events().insert(calendarId='primary', body=event).execute()
 
         # Save credentials in case they were refreshed during the API call
-        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+        save_calendar_credentials_after_use(service, CALENDAR_EMAIL_ACCOUNT_ID)
 
         logger.info(f"Event created: {created_event['id']}")
         return {
@@ -459,7 +548,7 @@ async def update_calendar_event(
     category: Optional[str] = None
 ) -> dict:
     """
-    Update an existing calendar event. Always uses the main calendar account (user ID 1).
+    Update an existing calendar event. Always uses the main calendar email account (email account ID 1).
 
     Args:
         event_id: The Google Calendar event ID
@@ -475,8 +564,8 @@ async def update_calendar_event(
     try:
         logger.info(f"Updating calendar event: {event_id}")
 
-        # Get calendar service (always uses CALENDAR_USER_ID)
-        service, error = get_calendar_service(CALENDAR_USER_ID)
+        # Get calendar service (always uses CALENDAR_EMAIL_ACCOUNT_ID)
+        service, error = get_calendar_service(CALENDAR_EMAIL_ACCOUNT_ID)
         if not service:
             return {"status": "error", "error": error}
 
@@ -513,7 +602,7 @@ async def update_calendar_event(
         updated_event = service.events().update(calendarId='primary', eventId=event_id, body=event).execute()
 
         # Save credentials in case they were refreshed during the API call
-        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+        save_calendar_credentials_after_use(service, CALENDAR_EMAIL_ACCOUNT_ID)
 
         logger.info(f"Event updated: {event_id}")
         return {
@@ -529,7 +618,7 @@ async def update_calendar_event(
 @mcp.tool()
 async def delete_calendar_event(event_id: str) -> dict:
     """
-    Delete a calendar event. Always uses the main calendar account (user ID 1).
+    Delete a calendar event. Always uses the main calendar email account (email account ID 1).
 
     Args:
         event_id: The Google Calendar event ID to delete
@@ -540,8 +629,8 @@ async def delete_calendar_event(event_id: str) -> dict:
     try:
         logger.info(f"Deleting calendar event: {event_id}")
 
-        # Get calendar service (always uses CALENDAR_USER_ID)
-        service, error = get_calendar_service(CALENDAR_USER_ID)
+        # Get calendar service (always uses CALENDAR_EMAIL_ACCOUNT_ID)
+        service, error = get_calendar_service(CALENDAR_EMAIL_ACCOUNT_ID)
         if not service:
             return {"status": "error", "error": error}
 
@@ -549,7 +638,7 @@ async def delete_calendar_event(event_id: str) -> dict:
         service.events().delete(calendarId='primary', eventId=event_id).execute()
 
         # Save credentials in case they were refreshed during the API call
-        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+        save_calendar_credentials_after_use(service, CALENDAR_EMAIL_ACCOUNT_ID)
 
         logger.info(f"Event deleted: {event_id}")
         return {
@@ -565,7 +654,7 @@ async def delete_calendar_event(event_id: str) -> dict:
 async def get_calendar_events(start_date: Optional[str] = None, end_date: Optional[str] = None) -> dict:
     """
     Get calendar events for a date range from ALL calendars (primary + Moodle).
-    Always uses the main calendar account (user ID 1).
+    Always uses the main calendar email account (email account ID 1).
     If no dates provided, returns events for the current month.
 
     Args:
@@ -576,8 +665,8 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
         List of events in the specified date range from all calendars
     """
     try:
-        # Get calendar service (always uses CALENDAR_USER_ID)
-        service, error = get_calendar_service(CALENDAR_USER_ID)
+        # Get calendar service (always uses CALENDAR_EMAIL_ACCOUNT_ID)
+        service, error = get_calendar_service(CALENDAR_EMAIL_ACCOUNT_ID)
         if not service:
             return {"status": "error", "error": error}
 
@@ -637,7 +726,7 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
         try:
             # Pass the ISO formatted dates with 'Z' suffix (same format as primary calendar)
             moodle_result = get_moodle_events_for_api(
-                user_id=CALENDAR_USER_ID,
+                email_account_id=CALENDAR_EMAIL_ACCOUNT_ID,
                 start_date=start_date_str,  # Use the 'Z' formatted version
                 end_date=end_date_str       # Use the 'Z' formatted version
             )
@@ -667,7 +756,7 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
         formatted_events.sort(key=lambda e: e['start'])
 
         # Save credentials in case they were refreshed during the API call
-        save_calendar_credentials_after_use(service, CALENDAR_USER_ID)
+        save_calendar_credentials_after_use(service, CALENDAR_EMAIL_ACCOUNT_ID)
 
         return {
             "status": "success",
@@ -684,13 +773,13 @@ async def get_calendar_events(start_date: Optional[str] = None, end_date: Option
 # --- AI-Enhanced Tools ---
 
 @mcp.tool()
-async def extract_dates_from_emails(user_id: int, limit: int = 20, auto_create_events: bool = False) -> dict:
+async def extract_dates_from_emails(email_account_id: int, limit: int = 20, auto_create_events: bool = False) -> dict:
     """
     Extract deadlines and important dates from recent emails using LLM.
     Optionally create calendar events automatically.
 
     Args:
-        user_id: The ID of the user whose emails to analyze
+        email_account_id: The ID of the email account whose emails to analyze
         limit: Number of recent emails to analyze (default: 20)
         auto_create_events: If True, automatically creates calendar events for found dates (default: False)
 
@@ -698,10 +787,10 @@ async def extract_dates_from_emails(user_id: int, limit: int = 20, auto_create_e
         Extracted dates and optionally created event IDs
     """
     try:
-        logger.info(f"Extracting dates from {limit} emails for user {user_id}")
+        logger.info(f"Extracting dates from {limit} emails for email account {email_account_id}")
 
         # Get recent emails
-        emails = db_manager.get_user_emails(user_id, limit=limit)
+        emails = db_manager.get_email_account_emails(email_account_id, limit=limit)
 
         if not emails:
             return {"status": "success", "extracted_dates": [], "message": "No emails found"}
@@ -794,13 +883,13 @@ Respond with ONLY the JSON array, no other text.
 
 
 @mcp.tool()
-async def summarize_emails(query: str = "unread", user_id: Optional[int] = None, summary_type: str = "brief") -> dict:
+async def summarize_emails(query: str = "unread", email_account_id: Optional[int] = None, summary_type: str = "brief") -> dict:
     """
     Generate an AI summary of emails matching specific criteria.
 
     Args:
         query: Filter criteria - Gmail query syntax (default: "unread")
-        user_id: Optional user ID to filter emails (if not provided, uses semantic search across all)
+        email_account_id: Optional email account ID to filter emails (if not provided, uses semantic search across all)
         summary_type: Type of summary - "brief", "detailed", or "bullet_points" (default: "brief")
 
     Returns:
@@ -810,7 +899,7 @@ async def summarize_emails(query: str = "unread", user_id: Optional[int] = None,
         logger.info(f"Summarizing emails with query: {query}, type: {summary_type}")
 
         # Search for emails
-        search_result = await search_emails(query=query, user_id=user_id, use_semantic=True, limit=20)
+        search_result = await search_emails(query=query, email_account_id=email_account_id, use_semantic=True, limit=20)
 
         if search_result.get('status') != 'success' or not search_result.get('results'):
             return {"status": "success", "summary": "No emails found matching the criteria."}
@@ -883,18 +972,18 @@ Brief summary:
 # MCP RESOURCES - Read-only data sources
 # ============================================================================
 
-@mcp.resource("mail://inbox/{user_id}")
-async def get_inbox_resource(user_id: int) -> str:
+@mcp.resource("mail://inbox/{email_account_id}")
+async def get_inbox_resource(email_account_id: int) -> str:
     """
-    Resource: Get inbox emails for a specific user.
+    Resource: Get inbox emails for a specific email account.
 
-    URI: mail://inbox/{user_id}
+    URI: mail://inbox/{email_account_id}
     Example: mail://inbox/1
 
-    Returns JSON string with list of emails for the specified user.
+    Returns JSON string with list of emails for the specified email account.
     """
     try:
-        emails = db_manager.get_user_emails(int(user_id), limit=50)
+        emails = db_manager.get_email_account_emails(int(email_account_id), limit=50)
 
         email_list = [
             {
@@ -908,7 +997,7 @@ async def get_inbox_resource(user_id: int) -> str:
         ]
 
         return json.dumps({
-            "user_id": int(user_id),
+            "email_account_id": int(email_account_id),
             "emails": email_list,
             "count": len(email_list)
         }, indent=2)
@@ -944,7 +1033,7 @@ async def get_email_resource(message_id: str) -> str:
                 "snippet": email.snippet,
                 "body_text": email.body_text,
                 "body_html": email.body_html,
-                "user_id": email.user_id
+                "email_account_id": email.email_account_id
             }
 
             return json.dumps(email_data, indent=2)
@@ -960,7 +1049,7 @@ async def get_calendar_events_resource() -> str:
 
     URI: calendar://events
 
-    Returns JSON string with list of events from all calendars (user ID 1).
+    Returns JSON string with list of events from all calendars (email account ID 1).
     """
     try:
         # Use the tool to get all events (which already merges primary + Moodle)
@@ -989,11 +1078,11 @@ async def get_calendar_event_resource(event_id: str) -> str:
     URI: calendar://event/{event_id}
     Example: calendar://event/abc123def456
 
-    Returns JSON string with event details from the main calendar (user ID 1).
+    Returns JSON string with event details from the main calendar (email account ID 1).
     """
     try:
-        # Get calendar service (always uses CALENDAR_USER_ID)
-        service, error = get_calendar_service(CALENDAR_USER_ID)
+        # Get calendar service (always uses CALENDAR_EMAIL_ACCOUNT_ID)
+        service, error = get_calendar_service(CALENDAR_EMAIL_ACCOUNT_ID)
         if not service:
             return json.dumps({"error": error})
 
@@ -1021,69 +1110,157 @@ async def get_calendar_event_resource(event_id: str) -> str:
         return json.dumps({"error": str(e)})
 
 
-@mcp.resource("user://list")
-async def get_users_resource() -> str:
+@mcp.resource("account://list")
+async def get_accounts_resource() -> str:
     """
-    Resource: Get list of all registered users in the system.
+    Resource: Get list of all registered accounts in the system.
 
-    URI: user://list
+    URI: account://list
 
-    Returns JSON string with all users.
+    Returns JSON string with all accounts.
     """
     try:
-        users = db_manager.get_all_users()
+        accounts = db_manager.get_all_accounts()
 
-        user_list = [
+        account_list = [
             {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name,
-                "created_at": user.created_at.isoformat() if user.created_at else None
+                "id": account.id,
+                "primary_email": account.primary_email,
+                "created_at": account.created_at.isoformat() if account.created_at else None
             }
-            for user in users
+            for account in accounts
         ]
 
         return json.dumps({
-            "users": user_list,
-            "count": len(user_list)
+            "accounts": account_list,
+            "count": len(account_list)
         }, indent=2)
     except Exception as e:
-        logger.error(f"Error getting users resource: {e}")
+        logger.error(f"Error getting accounts resource: {e}")
         return json.dumps({"error": str(e)})
 
 
-@mcp.resource("user://info/{user_id}")
-async def get_user_resource(user_id: int) -> str:
+@mcp.resource("mailbox://list")
+async def get_email_accounts_resource() -> str:
     """
-    Resource: Get detailed information about a specific user.
+    Resource: Get list of all email accounts in the system.
 
-    URI: user://info/{user_id}
-    Example: user://info/1
+    URI: mailbox://list
 
-    Returns JSON string with user details.
+    Returns JSON string with all email accounts.
+    """
+    try:
+        email_accounts = db_manager.get_all_email_accounts()
+
+        email_account_list = [
+            {
+                "id": ea.id,
+                "email": ea.email,
+                "provider": ea.provider,
+                "account_id": ea.account_id,
+                "is_primary": bool(ea.is_primary),
+                "created_at": ea.created_at.isoformat() if ea.created_at else None
+            }
+            for ea in email_accounts
+        ]
+
+        return json.dumps({
+            "email_accounts": email_account_list,
+            "count": len(email_account_list)
+        }, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting email accounts resource: {e}")
+        return json.dumps({"error": str(e)})
+
+
+@mcp.resource("account://info/{account_id}")
+async def get_account_resource(account_id: int) -> str:
+    """
+    Resource: Get detailed information about a specific account.
+
+    URI: account://info/{account_id}
+    Example: account://info/1
+
+    Returns JSON string with account details.
     """
     try:
         with db_manager.get_session() as session:
-            user = session.query(User).filter_by(id=int(user_id)).first()
+            account = session.query(Account).filter_by(id=int(account_id)).first()
 
-            if not user:
-                return json.dumps({"error": f"User with ID {user_id} not found"})
+            if not account:
+                return json.dumps({"error": f"Account with ID {account_id} not found"})
 
-            user_data = {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name,
-                "created_at": user.created_at.isoformat() if user.created_at else None,
-                "updated_at": user.updated_at.isoformat() if user.updated_at else None
+            # Get email accounts for this account
+            email_accounts = session.query(EmailAccount).filter_by(account_id=account.id).all()
+            
+            # Count total emails across all email accounts
+            total_emails = 0
+            for ea in email_accounts:
+                email_count = session.query(Email).filter_by(email_account_id=ea.id).count()
+                total_emails += email_count
+
+            account_data = {
+                "id": account.id,
+                "primary_email": account.primary_email,
+                "created_at": account.created_at.isoformat() if account.created_at else None,
+                "updated_at": account.updated_at.isoformat() if account.updated_at else None,
+                "email_accounts_count": len(email_accounts),
+                "total_emails": total_emails,
+                "email_accounts": [
+                    {
+                        "id": ea.id,
+                        "email": ea.email,
+                        "provider": ea.provider,
+                        "is_primary": bool(ea.is_primary)
+                    }
+                    for ea in email_accounts
+                ]
             }
 
-            # Get email count for this user
-            email_count = session.query(Email).filter_by(user_id=user.id).count()
-            user_data["email_count"] = email_count
-
-            return json.dumps(user_data, indent=2)
+            return json.dumps(account_data, indent=2)
     except Exception as e:
-        logger.error(f"Error getting user resource: {e}")
+        logger.error(f"Error getting account resource: {e}")
+        return json.dumps({"error": str(e)})
+
+
+@mcp.resource("mailbox://info/{email_account_id}")
+async def get_email_account_resource(email_account_id: int) -> str:
+    """
+    Resource: Get detailed information about a specific email account.
+
+    URI: mailbox://info/{email_account_id}
+    Example: mailbox://info/1
+
+    Returns JSON string with email account details.
+    """
+    try:
+        with db_manager.get_session() as session:
+            email_account = session.query(EmailAccount).filter_by(id=int(email_account_id)).first()
+
+            if not email_account:
+                return json.dumps({"error": f"Email account with ID {email_account_id} not found"})
+
+            # Get parent account
+            account = session.query(Account).filter_by(id=email_account.account_id).first()
+            
+            # Get email count for this email account
+            email_count = session.query(Email).filter_by(email_account_id=email_account.id).count()
+
+            email_account_data = {
+                "id": email_account.id,
+                "email": email_account.email,
+                "provider": email_account.provider,
+                "account_id": email_account.account_id,
+                "is_primary": bool(email_account.is_primary),
+                "account_primary_email": account.primary_email if account else None,
+                "email_count": email_count,
+                "created_at": email_account.created_at.isoformat() if email_account.created_at else None,
+                "updated_at": email_account.updated_at.isoformat() if email_account.updated_at else None
+            }
+
+            return json.dumps(email_account_data, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting email account resource: {e}")
         return json.dumps({"error": str(e)})
 
 
@@ -1094,11 +1271,12 @@ async def get_system_status_resource() -> str:
 
     URI: system://status
 
-    Returns JSON string with system information including total users, emails, last sync time.
+    Returns JSON string with system information including total accounts, email accounts, emails, last sync time.
     """
     try:
         with db_manager.get_session() as session:
-            total_users = session.query(User).count()
+            total_accounts = session.query(Account).count()
+            total_email_accounts = session.query(EmailAccount).count()
             total_emails = session.query(Email).count()
 
             # Get most recent email date
@@ -1106,11 +1284,12 @@ async def get_system_status_resource() -> str:
             latest_email_date = latest_email.date_sent.isoformat() if latest_email and latest_email.date_sent else None
 
             status_data = {
-                "total_users": total_users,
+                "total_accounts": total_accounts,
+                "total_email_accounts": total_email_accounts,
                 "total_emails": total_emails,
                 "latest_email_date": latest_email_date,
                 "last_sync_time": context.get("last_sync_time"),
-                "calendar_user_id": CALENDAR_USER_ID,
+                "calendar_email_account_id": CALENDAR_EMAIL_ACCOUNT_ID,
                 "timestamp": datetime.now().isoformat()
             }
 
@@ -1121,7 +1300,7 @@ async def get_system_status_resource() -> str:
 
 
 # ============================================================================
-# MCP PROMPTS - Guided workflows
+# MCP PROMPTS - Guided workflows (Updated for new schema)
 # ============================================================================
 
 @mcp.prompt()
@@ -1142,8 +1321,8 @@ def email_triage_prompt(priority_keywords: str = "urgent, important, deadline, A
 
 **Step-by-step workflow:**
 
-1. **Get all users** using the `list_users` tool to see available email accounts
-2. **For each user**, use `search_emails` with semantic search to find recent emails
+1. **Get all email accounts** using the `list_email_accounts` tool to see available email accounts
+2. **For each email account**, use `search_emails` with semantic search to find recent emails
 3. **Analyze each email** for urgency based on these keywords: {priority_keywords}
 4. **Categorize emails** into:
    - 🔴 HIGH PRIORITY: Requires immediate action (deadlines, urgent requests)
@@ -1175,22 +1354,23 @@ def email_triage_prompt(priority_keywords: str = "urgent, important, deadline, A
    ```
 
 **Available tools:**
-- `list_users` - Get all email accounts
+- `list_accounts` - Get all accounts
+- `list_email_accounts` - Get all email accounts
 - `search_emails` - Search emails (use semantic=True for better results)
 - `get_email_details` - Get full email content
 - `get_calendar_events` - Check existing calendar events
 - `create_calendar_event` - Create event for deadline (if needed)
 
 **Available resources:**
-- `mail://inbox/{{user_id}}` - Quick view of user's inbox
+- `mail://inbox/{{email_account_id}}` - Quick view of email account's inbox
 - `calendar://events` - Current calendar events
 
-Start by listing users and analyzing their emails.
+Start by listing email accounts and analyzing their emails.
 """
 
 
 @mcp.prompt()
-def deadline_tracker_prompt(user_id: int = 1, days_to_search: int = 7, auto_create: bool = True) -> str:
+def deadline_tracker_prompt(email_account_id: int = 1, days_to_search: int = 7, auto_create: bool = True) -> str:
     """
     Prompt: Guide LLM to find deadlines in emails and create calendar events.
 
@@ -1198,7 +1378,7 @@ def deadline_tracker_prompt(user_id: int = 1, days_to_search: int = 7, auto_crea
     and optionally creating calendar events.
 
     Args:
-        user_id: Which user's emails to analyze (default: 1)
+        email_account_id: Which email account's emails to analyze (default: 1)
         days_to_search: How many days of emails to search (default: 7)
         auto_create: Whether to automatically create calendar events (default: True)
 
@@ -1209,12 +1389,12 @@ def deadline_tracker_prompt(user_id: int = 1, days_to_search: int = 7, auto_crea
 
 **Step-by-step workflow:**
 
-1. **Sync recent emails** for user {user_id}:
-   - Use `sync_emails` with user_id={user_id} to fetch latest emails
+1. **Sync recent emails** for email account {email_account_id}:
+   - Use `sync_emails` with email_account_id={email_account_id} to fetch latest emails
 
 2. **Extract deadlines** from emails:
    - Use `extract_dates_from_emails` tool with:
-     - user_id={user_id}
+     - email_account_id={email_account_id}
      - limit={days_to_search * 10} (approximate emails for {days_to_search} days)
      - auto_create_events={str(auto_create).lower()}
 
@@ -1256,15 +1436,15 @@ def deadline_tracker_prompt(user_id: int = 1, days_to_search: int = 7, auto_crea
 - `create_calendar_event` - Manually create event (if auto_create=False)
 
 **Available resources:**
-- `mail://inbox/{user_id}` - User's inbox
+- `mail://inbox/{email_account_id}` - Email account's inbox
 - `calendar://events` - Current calendar
 
-Start by syncing emails for user {user_id}.
+Start by syncing emails for email account {email_account_id}.
 """
 
 
 @mcp.prompt()
-def daily_digest_prompt(user_id: int = 1, summary_type: str = "detailed") -> str:
+def daily_digest_prompt(email_account_id: int = 1, summary_type: str = "detailed") -> str:
     """
     Prompt: Guide LLM to create a daily email digest.
 
@@ -1272,7 +1452,7 @@ def daily_digest_prompt(user_id: int = 1, summary_type: str = "detailed") -> str
     organized by category and priority.
 
     Args:
-        user_id: Which user's emails to summarize (default: 1)
+        email_account_id: Which email account's emails to summarize (default: 1)
         summary_type: Type of summary - "brief", "detailed", or "bullet_points" (default: "detailed")
 
     Returns:
@@ -1283,7 +1463,7 @@ def daily_digest_prompt(user_id: int = 1, summary_type: str = "detailed") -> str
 **Step-by-step workflow:**
 
 1. **Sync latest emails**:
-   - Use `sync_emails` with user_id={user_id} to ensure we have the latest
+   - Use `sync_emails` with email_account_id={email_account_id} to ensure we have the latest
 
 2. **Categorize emails** by type:
    - Use `search_emails` with semantic search to find emails in categories:
@@ -1303,7 +1483,7 @@ def daily_digest_prompt(user_id: int = 1, summary_type: str = "detailed") -> str
 5. **Format your response** as:
    ```
    📬 DAILY EMAIL DIGEST - {{date}}
-   User: {{user_email}} (ID: {user_id})
+   Email Account: {{email_account_email}} (ID: {email_account_id})
 
    {"=" * 60}
 
@@ -1340,14 +1520,14 @@ def daily_digest_prompt(user_id: int = 1, summary_type: str = "detailed") -> str
 - `search_emails` - Find emails by category (use semantic=True)
 - `summarize_emails` - Generate AI summaries
 - `get_calendar_events` - Check calendar
-- `get_user_info` - Get user details
+- `get_email_account_info` - Get email account details
 
 **Available resources:**
-- `mail://inbox/{user_id}` - User's inbox
-- `user://info/{user_id}` - User information
+- `mail://inbox/{email_account_id}` - Email account's inbox
+- `mailbox://info/{email_account_id}` - Email account information
 - `calendar://events` - Calendar events
 
-Start by syncing emails and getting user info.
+Start by syncing emails and getting email account info.
 """
 
 
@@ -1436,7 +1616,7 @@ Start by reviewing the calendar and analyzing availability.
 @mcp.prompt()
 def smart_search_prompt(search_query: str, max_results: int = 10) -> str:
     """
-    Prompt: Guide LLM to perform intelligent email search across all users.
+    Prompt: Guide LLM to perform intelligent email search across all email accounts.
 
     This prompt helps conduct sophisticated searches using both semantic
     and keyword-based approaches.
@@ -1466,12 +1646,12 @@ def smart_search_prompt(search_query: str, max_results: int = 10) -> str:
 
 3. **If semantic search yields < 3 results**, try keyword search:
    - Extract key terms from "{search_query}"
-   - Use `search_emails` with Gmail query syntax
+   - Use `search_emails` with Gmail query syntax on specific email accounts
 
 4. **For each result**:
    - Get full email details with `get_email_details` if needed
    - Extract relevant snippets that match the query
-   - Identify the user who received the email
+   - Identify the email account that received the email
 
 5. **Analyze and rank results** by relevance:
    - Most relevant to query
@@ -1487,7 +1667,7 @@ def smart_search_prompt(search_query: str, max_results: int = 10) -> str:
    {"=" * 60}
 
    1. ⭐ [Subject]
-      From: [Sender] | To: [User] | Date: [Date]
+      From: [Sender] | To: [Email Account] | Date: [Date]
       Relevance: {'{why_relevant}'}
 
       Preview: "{'{snippet}'}"
@@ -1495,7 +1675,7 @@ def smart_search_prompt(search_query: str, max_results: int = 10) -> str:
       📧 [Link to full email via message_id]
 
    2. [Subject]
-      From: [Sender] | To: [User] | Date: [Date]
+      From: [Sender] | To: [Email Account] | Date: [Date]
       Relevance: {'{why_relevant}'}
 
       Preview: "{'{snippet}'}"
@@ -1516,11 +1696,11 @@ def smart_search_prompt(search_query: str, max_results: int = 10) -> str:
 **Available tools:**
 - `search_emails` - Primary search (both semantic and keyword)
 - `get_email_details` - Get full email content
-- `list_users` - See which users have emails
+- `list_email_accounts` - See which email accounts have emails
 
 **Available resources:**
 - `mail://email/{{message_id}}` - Direct access to specific email
-- `user://list` - All users
+- `mailbox://list` - All email accounts
 
 Start by performing semantic search for "{search_query}".
 """
@@ -1531,5 +1711,6 @@ Start by performing semantic search for "{search_query}".
 # ============================================================================
 
 if __name__ == "__main__":
-    logger.info("Starting Gmail Calendar Agent MCP Server...")
+    logger.info("Starting Gmail Calendar Agent MCP Server (Updated Schema)...")
     mcp.run()
+

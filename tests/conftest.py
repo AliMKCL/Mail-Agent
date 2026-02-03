@@ -1,10 +1,12 @@
 """
 Pytest configuration and shared fixtures for Mail Agent tests.
+Updated version with Account/EmailAccount structure.
 """
 
 import pytest
 import sys
 import os
+import hashlib
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, AsyncMock, patch
 
@@ -15,7 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
-from backend.databases.database import Base, User, Email, DatabaseManager
+from backend.databases.database import Base, Account, EmailAccount, Email, DatabaseManager
 
 
 # ============================================================================
@@ -28,7 +30,7 @@ def test_db(tmp_path):
     Create a fresh SQLite database file for each test.
     Uses a temp file because in-memory SQLite doesn't share across connections/threads.
     """
-    from backend import app as app_module
+    from backend.app import db_manager
 
     # Create test database file
     db_path = tmp_path / "test.db"
@@ -37,18 +39,18 @@ def test_db(tmp_path):
     TestSessionLocal = sessionmaker(bind=test_engine)
 
     # Store original values
-    original_engine = app_module.db_manager.engine
-    original_session_local = app_module.db_manager.SessionLocal
+    original_engine = db_manager.engine
+    original_session_local = db_manager.SessionLocal
 
     # Replace with test database
-    app_module.db_manager.engine = test_engine
-    app_module.db_manager.SessionLocal = TestSessionLocal
+    db_manager.engine = test_engine
+    db_manager.SessionLocal = TestSessionLocal
 
-    yield app_module.db_manager
+    yield db_manager
 
     # Restore original values
-    app_module.db_manager.engine = original_engine
-    app_module.db_manager.SessionLocal = original_session_local
+    db_manager.engine = original_engine
+    db_manager.SessionLocal = original_session_local
 
     # Clean up (tmp_path handles file deletion automatically)
 
@@ -61,16 +63,61 @@ def client(test_db):
         yield c
 
 
-@pytest.fixture
-def test_user(test_db):
-    """Create a test user."""
-    return test_db.get_or_create_user("testuser@gmail.com", "Test User")
+def _hash_password(password: str) -> str:
+    """Helper function to hash passwords for test accounts."""
+    sha256_hash = hashlib.sha256()
+    sha256_hash.update(password.encode("utf-8"))
+    return sha256_hash.hexdigest()
 
 
 @pytest.fixture
-def second_user(test_db):
-    """Create a second test user."""
-    return test_db.get_or_create_user("seconduser@gmail.com", "Second User")
+def test_account(test_db):
+    """Create a test account with primary email account."""
+    # Create account with hashed password
+    password_hash = _hash_password("testpassword")
+    account = test_db.get_or_create_account("testuser@gmail.com", password_hash)
+    
+    # Create primary email account for this account
+    email_account = test_db.get_or_create_email_account(
+        account_id=account.id,
+        email="testuser@gmail.com",
+        provider='gmail',
+        is_primary=True
+    )
+    
+    return account, email_account
+
+
+@pytest.fixture
+def test_user(test_db, test_account):
+    """Create a test user (returns email_account for backward compatibility)."""
+    account, email_account = test_account
+    return email_account
+
+
+@pytest.fixture
+def second_account(test_db):
+    """Create a second test account with primary email account."""
+    # Create account with hashed password
+    password_hash = _hash_password("testpassword2")
+    account = test_db.get_or_create_account("seconduser@gmail.com", password_hash)
+    
+    # Create primary email account for this account
+    email_account = test_db.get_or_create_email_account(
+        account_id=account.id,
+        email="seconduser@gmail.com",
+        provider='gmail',
+        is_primary=True
+    )
+    
+    return account, email_account
+
+
+@pytest.fixture
+def second_user(test_db, second_account):
+    """Create a second test user (returns email_account for backward compatibility)."""
+    account, email_account = second_account
+    return email_account
 
 
 @pytest.fixture
@@ -98,6 +145,7 @@ def user_with_emails(test_db, test_user):
             "body_html": None
         }
     ]
+    # Use email_account_id instead of user_id
     test_db.save_emails(test_user.id, emails)
     return test_user
 
@@ -117,6 +165,7 @@ def second_user_with_emails(test_db, second_user):
             "body_html": None
         }
     ]
+    # Use email_account_id instead of user_id
     test_db.save_emails(second_user.id, emails)
     return second_user
 
@@ -251,3 +300,4 @@ def mock_llm():
         return "Based on your emails, you have a meeting tomorrow at 10am."
 
     return mock_response
+

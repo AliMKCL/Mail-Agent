@@ -486,6 +486,8 @@ async def get_email_account_info(email_account_id: int):
                 "is_primary": email_account.is_primary,
                 "created_at": email_account.created_at.isoformat()
             }
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching email account info: {str(e)}")
 
@@ -530,6 +532,7 @@ async def create_user_and_auth(user_data: UserCreateRequest):
             "created_at": email_account.created_at.isoformat(),
             "message": "Email account added successfully. Please authenticate with Google."
         }
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -628,7 +631,8 @@ async def get_calendar_events(email_account_id: Optional[int] = None, start_date
             "events": formatted_events,
             "message": "Calendar events retrieved successfully"
         }
-        
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions
     except HttpError as e:
         raise HTTPException(status_code=500, detail=f"Google Calendar API error: {str(e)}")
     except Exception as e:

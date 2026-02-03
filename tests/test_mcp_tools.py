@@ -1,7 +1,13 @@
 """
-Integration tests for MCP Server Tools
+Integration tests for MCP Server Tools - Updated for new database schema
+
 Tests actual tool functionality without mocks (except for Google API calls).
-Uses real database operations and ensures proper cleanup.
+Uses real database operations with new schema and ensures proper cleanup.
+
+Updated for new database schema:
+- Account: The logged-in user (account_id from accounts table)
+- EmailAccount: A connected Gmail/Outlook account (email_account_id from email_accounts table)
+- Email: Email messages linked to EmailAccounts
 """
 
 import pytest
@@ -13,7 +19,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.databases.database import DatabaseManager, User, Email
+from backend.databases.database import DatabaseManager, Account, EmailAccount, Email
 import backend.mcp_server as mcp_server
 
 # Extract actual functions from FunctionTool wrappers
@@ -23,14 +29,16 @@ def get_tool_function(tool):
         return tool.fn
     return tool
 
-# User management tools
-list_users = get_tool_function(mcp_server.list_users)
-get_user_info = get_tool_function(mcp_server.get_user_info)
+# Account management tools
+list_accounts = get_tool_function(mcp_server.list_accounts)
+list_email_accounts = get_tool_function(mcp_server.list_email_accounts)
+get_account_info = get_tool_function(mcp_server.get_account_info)
+get_email_account_info = get_tool_function(mcp_server.get_email_account_info)
 
 # Email tools
 search_emails = get_tool_function(mcp_server.search_emails)
 get_email_details = get_tool_function(mcp_server.get_email_details)
-get_user_emails = get_tool_function(mcp_server.get_user_emails)
+get_email_account_emails = get_tool_function(mcp_server.get_email_account_emails)
 
 # Calendar tools
 create_calendar_event = get_tool_function(mcp_server.create_calendar_event)
@@ -54,29 +62,49 @@ def db_manager():
 
 
 @pytest.fixture
-def test_user(db_manager):
-    """Create a test user and clean up after."""
-    user = db_manager.get_or_create_user("mcp_test@example.com", "MCP Test User")
-    yield user
+def test_account(db_manager):
+    """Create a test account and clean up after."""
+    account = db_manager.get_or_create_account("mcp_test@example.com", "test_password_hash")
+    yield account
 
-    # Cleanup: Delete test user and associated data
+    # Cleanup: Delete test account and associated data
     with db_manager.get_session() as session:
-        # Delete user's emails
-        session.query(Email).filter_by(user_id=user.id).delete()
-        # Delete user
-        session.query(User).filter_by(id=user.id).delete()
+        # Delete email accounts and their emails
+        email_accounts = session.query(EmailAccount).filter_by(account_id=account.id).all()
+        for ea in email_accounts:
+            # Delete emails for this email account
+            session.query(Email).filter_by(email_account_id=ea.id).delete()
+            # Delete the email account
+            session.delete(ea)
+        
+        # Delete account
+        session.query(Account).filter_by(id=account.id).delete()
         session.commit()
 
 
 @pytest.fixture
-def test_user_with_emails(db_manager, test_user):
-    """Create a test user with sample emails."""
+def test_email_account(db_manager, test_account):
+    """Create a test email account linked to the test account."""
+    email_account = db_manager.get_or_create_email_account(
+        account_id=test_account.id,
+        email="mcp_test_gmail@example.com",
+        provider="gmail",
+        is_primary=True
+    )
+    yield email_account
+
+    # Cleanup handled by test_account fixture
+
+
+@pytest.fixture
+def test_email_account_with_emails(db_manager, test_email_account):
+    """Create a test email account with sample emails."""
     emails = [
         {
             "message_id": "mcp_test_msg_001",
             "subject": "Project Deadline Reminder",
             "sender": "pm@company.com",
-            "recipient": "mcp_test@example.com",
+            "recipient": "mcp_test_gmail@example.com",
             "date_sent": datetime.now() - timedelta(days=2),
             "snippet": "The project is due next Friday",
             "body_text": "Hi team, just a reminder that our project deadline is next Friday, December 6th. Please make sure all deliverables are ready.",
@@ -86,7 +114,7 @@ def test_user_with_emails(db_manager, test_user):
             "message_id": "mcp_test_msg_002",
             "subject": "Team Meeting Tomorrow",
             "sender": "boss@company.com",
-            "recipient": "mcp_test@example.com",
+            "recipient": "mcp_test_gmail@example.com",
             "date_sent": datetime.now() - timedelta(days=1),
             "snippet": "Meeting at 10am in conference room",
             "body_text": "Please join our team meeting tomorrow at 10am in conference room A. We'll discuss Q4 goals.",
@@ -96,15 +124,15 @@ def test_user_with_emails(db_manager, test_user):
             "message_id": "mcp_test_msg_003",
             "subject": "Lunch invitation",
             "sender": "colleague@company.com",
-            "recipient": "mcp_test@example.com",
+            "recipient": "mcp_test_gmail@example.com",
             "date_sent": datetime.now(),
             "snippet": "Want to grab lunch?",
             "body_text": "Hey! Want to grab lunch today at noon? Let me know!",
             "body_html": None
         }
     ]
-    db_manager.save_emails(test_user.id, emails)
-    return test_user
+    db_manager.save_emails(test_email_account.id, emails)
+    return test_email_account
 
 
 @pytest.fixture
@@ -188,38 +216,85 @@ def mock_calendar_service():
 
 
 # ============================================================================
-# USER MANAGEMENT TOOL TESTS
+# ACCOUNT MANAGEMENT TOOL TESTS
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_list_users(test_user):
-    """Test listing all users."""
-    result = await list_users()
+async def test_list_accounts(test_account):
+    """Test listing all accounts."""
+    result = await list_accounts()
 
     assert result["status"] == "success"
-    assert "users" in result
+    assert "accounts" in result
     assert result["count"] > 0
 
-    # Check our test user is in the list
-    user_emails = [u["email"] for u in result["users"]]
-    assert "mcp_test@example.com" in user_emails
+    # Check our test account is in the list
+    account_emails = [a["primary_email"] for a in result["accounts"]]
+    assert "mcp_test@example.com" in account_emails
 
 
 @pytest.mark.asyncio
-async def test_get_user_info(test_user):
-    """Test getting specific user information."""
-    result = await get_user_info(user_id=test_user.id)
+async def test_list_email_accounts(test_email_account):
+    """Test listing all email accounts."""
+    result = await list_email_accounts()
 
     assert result["status"] == "success"
-    assert result["user"]["id"] == test_user.id
-    assert result["user"]["email"] == "mcp_test@example.com"
-    assert result["user"]["name"] == "MCP Test User"
+    assert "email_accounts" in result
+    assert result["count"] > 0
+
+    # Check our test email account is in the list
+    email_account_emails = [ea["email"] for ea in result["email_accounts"]]
+    assert "mcp_test_gmail@example.com" in email_account_emails
 
 
 @pytest.mark.asyncio
-async def test_get_user_info_invalid_id():
-    """Test getting user info with invalid ID."""
-    result = await get_user_info(user_id=99999)
+async def test_list_email_accounts_filtered(test_account, test_email_account):
+    """Test listing email accounts filtered by account_id."""
+    result = await list_email_accounts(account_id=test_account.id)
+
+    assert result["status"] == "success"
+    assert "email_accounts" in result
+    
+    # All returned email accounts should belong to test_account
+    for ea in result["email_accounts"]:
+        assert ea["account_id"] == test_account.id
+
+
+@pytest.mark.asyncio
+async def test_get_account_info(test_account, test_email_account):
+    """Test getting specific account information."""
+    result = await get_account_info(account_id=test_account.id)
+
+    assert result["status"] == "success"
+    assert result["account"]["id"] == test_account.id
+    assert result["account"]["primary_email"] == "mcp_test@example.com"
+    assert result["account"]["email_accounts_count"] > 0
+
+
+@pytest.mark.asyncio
+async def test_get_account_info_invalid_id():
+    """Test getting account info with invalid ID."""
+    result = await get_account_info(account_id=99999)
+
+    assert result["status"] == "error"
+    assert "not found" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_email_account_info(test_email_account):
+    """Test getting specific email account information."""
+    result = await get_email_account_info(email_account_id=test_email_account.id)
+
+    assert result["status"] == "success"
+    assert result["email_account"]["id"] == test_email_account.id
+    assert result["email_account"]["email"] == "mcp_test_gmail@example.com"
+    assert result["email_account"]["provider"] == "gmail"
+
+
+@pytest.mark.asyncio
+async def test_get_email_account_info_invalid_id():
+    """Test getting email account info with invalid ID."""
+    result = await get_email_account_info(email_account_id=99999)
 
     assert result["status"] == "error"
     assert "not found" in result["error"].lower()
@@ -230,9 +305,9 @@ async def test_get_user_info_invalid_id():
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_get_user_emails(test_user_with_emails):
-    """Test getting emails for a specific user."""
-    result = await get_user_emails(user_id=test_user_with_emails.id, limit=10)
+async def test_get_email_account_emails(test_email_account_with_emails):
+    """Test getting emails for a specific email account."""
+    result = await get_email_account_emails(email_account_id=test_email_account_with_emails.id, limit=10)
 
     assert result["status"] == "success"
     assert result["count"] == 3
@@ -245,7 +320,7 @@ async def test_get_user_emails(test_user_with_emails):
 
 
 @pytest.mark.asyncio
-async def test_get_email_details(test_user_with_emails):
+async def test_get_email_details(test_email_account_with_emails):
     """Test getting details of a specific email."""
     result = await get_email_details(message_id="mcp_test_msg_001")
 
@@ -253,6 +328,7 @@ async def test_get_email_details(test_user_with_emails):
     assert result["email"]["subject"] == "Project Deadline Reminder"
     assert result["email"]["sender"] == "pm@company.com"
     assert "deadline" in result["email"]["body_text"].lower()
+    assert result["email"]["email_account_id"] == test_email_account_with_emails.id
 
 
 @pytest.mark.asyncio
@@ -265,12 +341,12 @@ async def test_get_email_details_not_found():
 
 
 @pytest.mark.asyncio
-async def test_search_emails_by_content(test_user_with_emails, db_manager):
+async def test_search_emails_by_content(test_email_account_with_emails, db_manager):
     """Test searching emails by content in database."""
     # Search for emails containing "deadline"
     with db_manager.get_session() as session:
         emails = session.query(Email).filter(
-            Email.user_id == test_user_with_emails.id
+            Email.email_account_id == test_email_account_with_emails.id
         ).filter(
             Email.body_text.ilike("%deadline%")
         ).all()
@@ -533,12 +609,12 @@ async def test_calendar_error_handling(mock_calendar_service):
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_extract_dates_basic(test_user_with_emails):
+async def test_extract_dates_basic(test_email_account_with_emails):
     """Test basic date extraction from emails (without LLM call)."""
     # This test verifies the tool structure without making actual LLM calls
     with patch('backend.mcp_server.llm_response', return_value='[]'):
         result = await extract_dates_from_emails(
-            user_id=test_user_with_emails.id,
+            email_account_id=test_email_account_with_emails.id,
             limit=3,
             auto_create_events=False
         )
@@ -549,7 +625,7 @@ async def test_extract_dates_basic(test_user_with_emails):
 
 """
 @pytest.mark.asyncio
-async def test_extract_dates_with_mock_llm(test_user_with_emails, mock_calendar_service):
+async def test_extract_dates_with_mock_llm(test_email_account_with_emails, mock_calendar_service):
     #Test date extraction with mocked LLM response.
     service, events_store = mock_calendar_service
 
@@ -566,7 +642,7 @@ async def test_extract_dates_with_mock_llm(test_user_with_emails, mock_calendar_
          patch('backend.mcp_server.get_calendar_service', return_value=(service, None)):
 
         result = await extract_dates_from_emails(
-            user_id=test_user_with_emails.id,
+            email_account_id=test_email_account_with_emails.id,
             limit=3,
             auto_create_events=True
         )
@@ -585,12 +661,12 @@ async def test_extract_dates_with_mock_llm(test_user_with_emails, mock_calendar_
 """
 """
 @pytest.mark.asyncio
-async def test_summarize_emails_basic(test_user_with_emails):
+async def test_summarize_emails_basic(test_email_account_with_emails):
     #Test basic email summarization (without actual LLM call).
     with patch('backend.mcp_server.slm_response', return_value="Summary of emails: You have 3 emails including project deadline and meeting."):
         result = await summarize_emails(
             query="all",
-            user_id=test_user_with_emails.id,
+            email_account_id=test_email_account_with_emails.id,
             summary_type="brief"
         )
 
@@ -605,11 +681,11 @@ async def test_summarize_emails_basic(test_user_with_emails):
 # ============================================================================
 """
 @pytest.mark.asyncio
-async def test_workflow_user_emails_to_calendar(test_user_with_emails, mock_calendar_service):
+async def test_workflow_email_account_emails_to_calendar(test_email_account_with_emails, mock_calendar_service):
     
     #Test a complete workflow:
-    #1. List users
-    #2. Get user emails
+    #1. List accounts and email accounts
+    #2. Get email account emails
     #3. Extract dates from emails
     #4. Create calendar events
     #5. Verify events
@@ -617,12 +693,15 @@ async def test_workflow_user_emails_to_calendar(test_user_with_emails, mock_cale
     
     service, events_store = mock_calendar_service
 
-    # Step 1: List users
-    users_result = await list_users()
-    assert users_result["status"] == "success"
+    # Step 1: List accounts and email accounts
+    accounts_result = await list_accounts()
+    assert accounts_result["status"] == "success"
+    
+    email_accounts_result = await list_email_accounts()
+    assert email_accounts_result["status"] == "success"
 
     # Step 2: Get emails
-    emails_result = await get_user_emails(user_id=test_user_with_emails.id, limit=10)
+    emails_result = await get_email_account_emails(email_account_id=test_email_account_with_emails.id, limit=10)
     assert emails_result["status"] == "success"
     assert emails_result["count"] > 0
 
@@ -639,7 +718,7 @@ async def test_workflow_user_emails_to_calendar(test_user_with_emails, mock_cale
          patch('backend.mcp_server.get_calendar_service', return_value=(service, None)):
 
         extract_result = await extract_dates_from_emails(
-            user_id=test_user_with_emails.id,
+            email_account_id=test_email_account_with_emails.id,
             limit=3,
             auto_create_events=True
         )
@@ -674,7 +753,7 @@ async def test_workflow_user_emails_to_calendar(test_user_with_emails, mock_cale
 @pytest.mark.asyncio
 async def test_no_side_effects_after_tests(db_manager):
     """
-    Verify that test user cleanup worked properly.
+    Verify that test account and email account cleanup worked properly.
     This should run last to ensure no test data remains.
     """
     with db_manager.get_session() as session:
@@ -687,10 +766,17 @@ async def test_no_side_effects_after_tests(db_manager):
         for email in test_emails:
             session.delete(email)
 
-        # Check for test user
-        test_user = session.query(User).filter_by(email="mcp_test@example.com").first()
-        if test_user:
-            session.delete(test_user)
+        # Check for test email accounts
+        test_email_accounts = session.query(EmailAccount).filter(
+            EmailAccount.email.like("mcp_test%")
+        ).all()
+        for ea in test_email_accounts:
+            session.delete(ea)
+
+        # Check for test account
+        test_account = session.query(Account).filter_by(primary_email="mcp_test@example.com").first()
+        if test_account:
+            session.delete(test_account)
 
         session.commit()
 
@@ -700,7 +786,18 @@ async def test_no_side_effects_after_tests(db_manager):
             Email.message_id.like("mcp_test_%")
         ).count()
         assert remaining_emails == 0, "Test emails were not cleaned up properly"
+        
+        remaining_email_accounts = session.query(EmailAccount).filter(
+            EmailAccount.email.like("mcp_test%")
+        ).count()
+        assert remaining_email_accounts == 0, "Test email accounts were not cleaned up properly"
+        
+        remaining_accounts = session.query(Account).filter(
+            Account.primary_email == "mcp_test@example.com"
+        ).count()
+        assert remaining_accounts == 0, "Test accounts were not cleaned up properly"
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
+

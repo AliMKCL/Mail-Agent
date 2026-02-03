@@ -1,6 +1,12 @@
 """
-LLM Integration for MCP Tools
+LLM Integration for MCP Tools - Updated for new database schema
+
 Provides tool manifest and execution logic for connecting LLM to MCP server tools
+
+Updated for new database schema:
+- Account: The logged-in user (account_id from accounts table)
+- EmailAccount: A connected Gmail/Outlook account (email_account_id from email_accounts table)
+- Email: Email messages linked to EmailAccounts
 """
 
 import json
@@ -9,16 +15,18 @@ from typing import List, Dict, Any, Optional
 import os
 from dotenv import load_dotenv
 
-# Import MCP tools
+# Import MCP tools from updated server
 from backend.mcp_server import (
-    # User management
-    list_users,
-    get_user_info,
+    # Account management
+    list_accounts,
+    list_email_accounts,
+    get_account_info,
+    get_email_account_info,
     # Email tools
     search_emails,
     sync_emails,
     get_email_details,
-    get_user_emails,
+    get_email_account_emails,
     # Calendar tools
     create_calendar_event,
     update_calendar_event,
@@ -34,12 +42,14 @@ logger = logging.getLogger(__name__)
 
 # Tool registry - maps tool names to actual functions
 TOOL_REGISTRY = {
-    "list_users": list_users,
-    "get_user_info": get_user_info,
+    "list_accounts": list_accounts,
+    "list_email_accounts": list_email_accounts,
+    "get_account_info": get_account_info,
+    "get_email_account_info": get_email_account_info,
     "search_emails": search_emails,
     "sync_emails": sync_emails,
     "get_email_details": get_email_details,
-    "get_user_emails": get_user_emails,
+    "get_email_account_emails": get_email_account_emails,
     "create_calendar_event": create_calendar_event,
     "update_calendar_event": update_calendar_event,
     "delete_calendar_event": delete_calendar_event,
@@ -53,8 +63,8 @@ TOOLS_MANIFEST = [
     {
         "type": "function",
         "function": {
-            "name": "list_users",
-            "description": "List all registered Gmail users in the system",
+            "name": "list_accounts",
+            "description": "List all registered accounts (logged-in users) in the system",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -65,14 +75,42 @@ TOOLS_MANIFEST = [
     {
         "type": "function",
         "function": {
-            "name": "get_user_info",
-            "description": "Get detailed information about a specific user by their ID",
+            "name": "list_email_accounts",
+            "description": "List all email accounts (Gmail/Outlook accounts) in the system. Can optionally filter by account_id.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "The ID of the user to retrieve"}
+                    "account_id": {"type": "integer", "description": "Optional account ID to filter email accounts"}
                 },
-                "required": ["user_id"]
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_account_info",
+            "description": "Get detailed information about a specific account (logged-in user) by their ID",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "account_id": {"type": "integer", "description": "The ID of the account to retrieve"}
+                },
+                "required": ["account_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_email_account_info",
+            "description": "Get detailed information about a specific email account (Gmail/Outlook) by its ID",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email_account_id": {"type": "integer", "description": "The ID of the email account to retrieve"}
+                },
+                "required": ["email_account_id"]
             }
         }
     },
@@ -85,7 +123,7 @@ TOOLS_MANIFEST = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query (Gmail syntax or natural language)"},
-                    "user_id": {"type": "integer", "description": "Optional user ID to filter emails"},
+                    "email_account_id": {"type": "integer", "description": "Optional email account ID to filter emails"},
                     "use_semantic": {"type": "boolean", "description": "Use vector database semantic search", "default": False},
                     "limit": {"type": "integer", "description": "Maximum results to return", "default": 10}
                 },
@@ -97,14 +135,14 @@ TOOLS_MANIFEST = [
         "type": "function",
         "function": {
             "name": "sync_emails",
-            "description": "Fetch new emails from Gmail for a specific user and store them",
+            "description": "Fetch new emails from Gmail for a specific email account and store them",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "The ID of the user whose emails to sync"},
+                    "email_account_id": {"type": "integer", "description": "The ID of the email account whose emails to sync"},
                     "max_results": {"type": "integer", "description": "Maximum emails to fetch", "default": 50}
                 },
-                "required": ["user_id"]
+                "required": ["email_account_id"]
             }
         }
     },
@@ -125,15 +163,15 @@ TOOLS_MANIFEST = [
     {
         "type": "function",
         "function": {
-            "name": "get_user_emails",
-            "description": "Get cached emails for a specific user from the database",
+            "name": "get_email_account_emails",
+            "description": "Get cached emails for a specific email account from the database",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "The user ID"},
+                    "email_account_id": {"type": "integer", "description": "The email account ID"},
                     "limit": {"type": "integer", "description": "Maximum emails to return", "default": 50}
                 },
-                "required": ["user_id"]
+                "required": ["email_account_id"]
             }
         }
     },
@@ -141,7 +179,7 @@ TOOLS_MANIFEST = [
         "type": "function",
         "function": {
             "name": "create_calendar_event",
-            "description": "Create a new calendar event. Always uses the main calendar (user ID 1). IMPORTANT: Always provide the date in YYYY-MM-DD format with the full year. Use the current date context provided in the system message to infer the correct year.",
+            "description": "Create a new calendar event. Always uses the main calendar (email account ID 1). IMPORTANT: Always provide the date in YYYY-MM-DD format with the full year. Use the current date context provided in the system message to infer the correct year.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -211,11 +249,11 @@ TOOLS_MANIFEST = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "User ID whose emails to analyze"},
+                    "email_account_id": {"type": "integer", "description": "Email account ID whose emails to analyze"},
                     "limit": {"type": "integer", "description": "Number of recent emails to analyze", "default": 20},
                     "auto_create_events": {"type": "boolean", "description": "Automatically create calendar events", "default": False}
                 },
-                "required": ["user_id"]
+                "required": ["email_account_id"]
             }
         }
     },
@@ -228,7 +266,7 @@ TOOLS_MANIFEST = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Filter criteria", "default": "unread"},
-                    "user_id": {"type": "integer", "description": "Optional user ID to filter emails"},
+                    "email_account_id": {"type": "integer", "description": "Optional email account ID to filter emails"},
                     "summary_type": {"type": "string", "enum": ["brief", "detailed", "bullet_points"], "description": "Type of summary", "default": "brief"}
                 },
                 "required": []
@@ -238,14 +276,14 @@ TOOLS_MANIFEST = [
 ]
 
 
-async def execute_tool(tool_name: str, arguments: Dict[str, Any], context_user_id: int = None) -> Dict[str, Any]:
+async def execute_tool(tool_name: str, arguments: Dict[str, Any], context_email_account_id: int = None) -> Dict[str, Any]:
     """
     Execute an MCP tool by name with given arguments
 
     Args:
         tool_name: Name of the tool to execute
         arguments: Dictionary of arguments to pass to the tool
-        context_user_id: The user ID from the query context (for credential access)
+        context_email_account_id: The email account ID from the query context (for credential access)
 
     Returns:
         Result from the tool execution
@@ -258,13 +296,13 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], context_user_i
         # Extract the actual function from FunctionTool wrapper
         tool_func = tool_obj.fn if hasattr(tool_obj, 'fn') else tool_obj
 
-        # If the tool doesn't have a user_id argument but we have a context user_id,
+        # If the tool doesn't have an email_account_id argument but we have a context email_account_id,
         # and it's a calendar tool, inject it
         calendar_tools = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event', 'get_calendar_events']
-        if tool_name in calendar_tools and context_user_id is not None and 'user_id' not in arguments:
-            # For calendar tools, they use a hardcoded CALENDAR_USER_ID
-            # We'll ensure the database has credentials for this user
-            logger.info(f"Calendar tool {tool_name} will use CALENDAR_USER_ID from mcp_server (user_id={context_user_id} provided in context)")
+        if tool_name in calendar_tools and context_email_account_id is not None and 'email_account_id' not in arguments:
+            # For calendar tools, they use a hardcoded CALENDAR_EMAIL_ACCOUNT_ID
+            # We'll ensure the database has credentials for this email account
+            logger.info(f"Calendar tool {tool_name} will use CALENDAR_EMAIL_ACCOUNT_ID from mcp_server2 (email_account_id={context_email_account_id} provided in context)")
 
         logger.info(f"Executing tool: {tool_name} with args: {arguments}")
         result = await tool_func(**arguments)
@@ -275,13 +313,13 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], context_user_i
         return {"status": "error", "error": str(e)}
 
 
-async def process_llm_query(query: str, user_id: Optional[int] = None, use_openai: bool = True) -> Dict[str, Any]:
+async def process_llm_query(query: str, email_account_id: Optional[int] = None, use_openai: bool = True) -> Dict[str, Any]:
     """
     Process a user query through the LLM with access to MCP tools
 
     Args:
         query: User's natural language query
-        user_id: Optional user ID for context
+        email_account_id: Optional email account ID for context
         use_openai: Whether to use OpenAI (True) or Ollama (False)
 
     Returns:
@@ -289,12 +327,12 @@ async def process_llm_query(query: str, user_id: Optional[int] = None, use_opena
     """
 
     if use_openai:
-        return await process_with_openai(query, user_id)
+        return await process_with_openai(query, email_account_id)
     else:
-        return await process_with_ollama(query, user_id)
+        return await process_with_ollama(query, email_account_id)
 
 
-async def process_with_openai(query: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+async def process_with_openai(query: str, email_account_id: Optional[int] = None) -> Dict[str, Any]:
     """Process query using OpenAI with function calling"""
     try:
         from openai import AsyncOpenAI
@@ -332,7 +370,12 @@ IMPORTANT DATE HANDLING RULES:
 4. Always use YYYY-MM-DD format when calling calendar tools
 5. When inferring dates, be explicit: "I interpreted 'tomorrow' as {(now + __import__('datetime').timedelta(days=1)).strftime('%Y-%m-%d')}"
 
-{"Current user ID: " + str(user_id) if user_id else "No user context provided."}
+DATABASE SCHEMA:
+- Account: A logged-in user (account_id)
+- EmailAccount: A Gmail/Outlook account connected to an Account (email_account_id)
+- Email: Email messages belonging to an EmailAccount
+
+{"Current email account ID: " + str(email_account_id) if email_account_id else "No email account context provided."}
 
 When the user asks you to perform actions:
 1. Use the appropriate tools
@@ -381,8 +424,8 @@ When the user asks you to perform actions:
 
                 logger.info(f"LLM requested tool: {function_name} with args: {function_args}")
 
-                # Execute the tool with user context
-                result = await execute_tool(function_name, function_args, context_user_id=user_id)
+                # Execute the tool with email account context
+                result = await execute_tool(function_name, function_args, context_email_account_id=email_account_id)
 
                 # Add to actions log
                 actions_taken.append({
@@ -416,7 +459,7 @@ When the user asks you to perform actions:
         return {"status": "error", "error": str(e)}
 
 
-async def process_with_ollama(query: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+async def process_with_ollama(query: str, email_account_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Process query using Ollama (local LLM)
     Note: This is a simplified version without function calling
@@ -449,3 +492,4 @@ Respond naturally and indicate which tools you would use."""
     except Exception as e:
         logger.error(f"Error processing with Ollama: {e}", exc_info=True)
         return {"status": "error", "error": str(e)}
+
