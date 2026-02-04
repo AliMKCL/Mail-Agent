@@ -87,6 +87,21 @@ class SignUpRequest(BaseModel):
     email: str
     password: str
 
+class CalendarEventData(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    date: str  # Format: YYYY-MM-DD
+    time: Optional[str] = "All Day"  # Format: HH:MM AM/PM
+    category: Optional[str] = None
+
+class CreateCalendarEventRequest(BaseModel):
+    email_account_id: int
+    event_data: CalendarEventData
+
+class UpdateCalendarEventRequest(BaseModel):
+    email_account_id: int
+    event_data: CalendarEventData
+
 
 # Use absolute paths so StaticFiles works even if the process cwd differs
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -541,19 +556,47 @@ async def create_user_and_auth(user_data: UserCreateRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error creating email account: {str(e)}")
 
+# Helper function to get primary email account for an account
+def get_primary_email_account_id(email_account_id: int) -> int:
+    """Get the primary email account ID for the account that owns this email account"""
+    try:
+        # Get the email account
+        email_account = db_manager.get_email_account_by_id(email_account_id)
+        if not email_account:
+            return email_account_id  # Fallback to provided ID
+        
+        # Get all email accounts for this account
+        email_accounts = db_manager.get_account_email_accounts(email_account.account_id)
+        
+        # Find the primary one
+        for ea in email_accounts:
+            if ea.is_primary:
+                return ea.id
+        
+        # If no primary found, return the first one or the provided ID
+        return email_accounts[0].id if email_accounts else email_account_id
+    except Exception as e:
+        print(f"Error getting primary email account: {e}")
+        return email_account_id  # Fallback to provided ID
+
 # This endpoint is called to fetch calendar events for a user within a date range.
 @app.get("/api/calendar/events")
 async def get_calendar_events(email_account_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
     Get Google Calendar events for a specific email account within a date range
+    Calendar is always fetched from the primary email account of the Account
     """
     try:
         if email_account_id is None:
             raise HTTPException(status_code=400, detail="email_account_id parameter is required")
         
-        # Get calendar service
+        # Get the primary email account ID for calendar access
+        primary_email_account_id = get_primary_email_account_id(email_account_id)
+        print(f"[GET /api/calendar/events] Using primary email account {primary_email_account_id} for calendar access")
+        
+        # Get calendar service for the primary email account
         try:
-            service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
+            service, error = get_calendar_service(primary_email_account_id)
         except Exception as e:
             print(f"Exception in get_calendar_service: {e}")
             raise HTTPException(status_code=500, detail=f"Calendar service error: {str(e)}")
@@ -582,11 +625,14 @@ async def get_calendar_events(email_account_id: Optional[int] = None, start_date
             calendarId='primary',
             timeMin=start_date,
             timeMax=end_date,
+            maxResults=2500,  # Increase from default 250 to 2500 (API maximum)
             singleEvents=True,
             orderBy='startTime'
         ).execute()
         
         events = events_result.get('items', [])
+        print(f"[GET /api/calendar/events] Fetched {len(events)} events from Google Calendar API")
+        print(f"[GET /api/calendar/events] Date range: {start_date} to {end_date}")
         
         # Format events for frontend
         formatted_events = {}
@@ -626,6 +672,10 @@ async def get_calendar_events(email_account_id: Optional[int] = None, start_date
                     "end": event['end'].get('dateTime', event['end'].get('date'))
                 })
         
+        total_formatted = sum(len(events) for events in formatted_events.values())
+        print(f"[GET /api/calendar/events] Returning {total_formatted} formatted events across {len(formatted_events)} dates")
+        print(f"[GET /api/calendar/events] Date keys: {list(formatted_events.keys())}")
+        
         return {
             "status": "success",
             "events": formatted_events,
@@ -640,9 +690,10 @@ async def get_calendar_events(email_account_id: Optional[int] = None, start_date
 
 # This endpoint is called when creating a new calendar event via the modal.
 @app.post("/api/calendar/events")
-async def create_calendar_event(request_data: dict):
+async def create_calendar_event(request_data: CreateCalendarEventRequest):
     """
     Create a new calendar event
+    Calendar event is always created on the primary email account of the Account
     """
     try:
 
@@ -668,15 +719,16 @@ async def create_calendar_event(request_data: dict):
             )
         # =====================================================================
 
-        email_account_id = request_data.get('email_account_id')
-        event_data = request_data.get('event_data', {})
+        email_account_id = request_data.email_account_id
+        event_data = request_data.event_data
         
-        if not email_account_id:
-            raise HTTPException(status_code=400, detail="email_account_id is required")
+        # Get the primary email account ID for calendar access
+        primary_email_account_id = get_primary_email_account_id(email_account_id)
+        print(f"[POST /api/calendar/events] Using primary email account {primary_email_account_id} for calendar access")
         
-        # Get calendar service
+        # Get calendar service for the primary email account
         try:
-            service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
+            service, error = get_calendar_service(primary_email_account_id)
         except Exception as e:
             print(f"Exception in get_calendar_service (POST): {e}")
             raise HTTPException(status_code=500, detail=f"Calendar service error: {str(e)}")
@@ -685,14 +737,11 @@ async def create_calendar_event(request_data: dict):
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
         # Parse event data
-        title = event_data.get('title', 'New Event')
-        description = event_data.get('description', '')
-        date = event_data.get('date')  # Format: YYYY-MM-DD
-        time = event_data.get('time', '')  # Format: HH:MM AM/PM
-        category = event_data.get('category')  # User-selected category
-        
-        if not date:
-            raise HTTPException(status_code=400, detail="Event date is required")
+        title = event_data.title or 'New Event'
+        description = event_data.description or ''
+        date = event_data.date  # Format: YYYY-MM-DD
+        time = event_data.time or ''  # Format: HH:MM AM/PM
+        category = event_data.category  # User-selected category
         
         # Create event object
         if time and time != 'All Day':
@@ -740,9 +789,15 @@ async def create_calendar_event(request_data: dict):
                 }
             }
         
-        # Create event in Google Calendar
+        # [DEBUG] Print details when eventaddition
+        """
+        print(f"[POST /api/calendar/events] Creating event with body: {event}")
+        print(f"[POST /api/calendar/events] Successfully created event ID: {created_event.get('id')}")
+        print(f"[POST /api/calendar/events] Created event start: {created_event.get('start')}")
+        print(f"[POST /api/calendar/events] Event details: title='{title}', date='{date}', time='{time}', category='{category}'")
+        """
+
         created_event = service.events().insert(calendarId='primary', body=event).execute()
-        
         return {
             "status": "success",
             "message": "Event created successfully",
@@ -759,19 +814,21 @@ async def create_calendar_event(request_data: dict):
 
 # This endpoint is called when updating an existing calendar event.
 @app.put("/api/calendar/events/{event_id}")
-async def update_calendar_event(event_id: str, request_data: dict):
+async def update_calendar_event(event_id: str, request_data: UpdateCalendarEventRequest):
     """
     Update an existing calendar event
+    Calendar is always on the primary email account of the Account
     """
     try:
-        email_account_id = request_data.get('email_account_id')
-        event_data = request_data.get('event_data', {})
+        email_account_id = request_data.email_account_id
+        event_data = request_data.event_data
         
-        if not email_account_id:
-            raise HTTPException(status_code=400, detail="email_account_id is required")
+        # Get the primary email account ID for calendar access
+        primary_email_account_id = get_primary_email_account_id(email_account_id)
+        print(f"[PUT /api/calendar/events] Using primary email account {primary_email_account_id} for calendar access")
         
-        # Get calendar service
-        service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
+        # Get calendar service for the primary email account
+        service, error = get_calendar_service(primary_email_account_id)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -779,23 +836,23 @@ async def update_calendar_event(event_id: str, request_data: dict):
         event = service.events().get(calendarId='primary', eventId=event_id).execute()
         
         # Update event fields
-        if 'title' in event_data:
-            event['summary'] = event_data['title']
-        if 'description' in event_data:
-            event['description'] = event_data['description']
+        if event_data.title:
+            event['summary'] = event_data.title
+        if event_data.description is not None:
+            event['description'] = event_data.description
         
         # Update category if provided (Create extendedProperties if not exist)
-        if 'category' in event_data:
+        if event_data.category:
             if 'extendedProperties' not in event:
                 event['extendedProperties'] = {'private': {}}
             if 'private' not in event['extendedProperties']:
                 event['extendedProperties']['private'] = {}
-            event['extendedProperties']['private']['category'] = event_data['category']
+            event['extendedProperties']['private']['category'] = event_data.category
         
         # Handle time updates
-        if 'time' in event_data and 'date' in event_data:
-            date = event_data['date']
-            time = event_data['time']
+        if event_data.date:
+            date = event_data.date
+            time = event_data.time or 'All Day'
             
             if time and time != 'All Day':
                 try:
@@ -838,14 +895,20 @@ async def update_calendar_event(event_id: str, request_data: dict):
 # This endpoint is called when deleting a calendar event.
 @app.delete("/api/calendar/events/{event_id}")
 async def delete_calendar_event(event_id: str, email_account_id: int):
-    """Delete a Google Calendar event"""
+    """Delete a Google Calendar event
+    Calendar is always on the primary email account of the Account
+    """
     try:
         
         if not email_account_id:
             raise HTTPException(status_code=400, detail="email_account_id is required")
         
-        # Get calendar service
-        service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
+        # Get the primary email account ID for calendar access
+        primary_email_account_id = get_primary_email_account_id(email_account_id)
+        print(f"[DELETE /api/calendar/events] Using primary email account {primary_email_account_id} for calendar access")
+        
+        # Get calendar service for the primary email account
+        service, error = get_calendar_service(primary_email_account_id)
         if not service:
             raise HTTPException(status_code=500, detail=f"Failed to get calendar service: {error}")
         
@@ -938,28 +1001,31 @@ async def oauth_callback(code: str, state: Optional[str] = None):
 
 # Diagnostic endpoint to check calendar service status
 @app.get("/api/calendar/status")
-async def check_calendar_status():
+async def check_calendar_status(email_account_id: Optional[int] = None):
     """Check if calendar service is available"""
     try:
-        service, error = get_calendar_service(EMAIL_ACCOUNT_ID_FOR_CALENDAR)
+        # Use provided email_account_id or default to 1 for backward compatibility
+        account_id = email_account_id if email_account_id is not None else EMAIL_ACCOUNT_ID_FOR_CALENDAR
+        
+        service, error = get_calendar_service(account_id)
         if service:
             return {
                 "status": "success",
-                "message": f"Calendar service is working for email account {EMAIL_ACCOUNT_ID_FOR_CALENDAR}",
-                "email_account_id": EMAIL_ACCOUNT_ID_FOR_CALENDAR
+                "message": f"Calendar service is working for email account {account_id}",
+                "email_account_id": account_id
             }
         else:
             return {
                 "status": "error",
                 "message": f"Calendar service failed: {error}",
-                "email_account_id": EMAIL_ACCOUNT_ID_FOR_CALENDAR,
+                "email_account_id": account_id,
                 "error": error
             }
     except Exception as e:
         return {
             "status": "error",
             "message": f"Exception: {str(e)}",
-            "email_account_id": EMAIL_ACCOUNT_ID_FOR_CALENDAR
+            "email_account_id": email_account_id
         }
 
 # This endpoint is called to fetch Moodle calendar events from the subscribed calendar.

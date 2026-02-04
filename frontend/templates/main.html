@@ -901,7 +901,7 @@
                     },
                     body: JSON.stringify({
                         query: query,
-                        user_id: currentEmailAccountId,
+                        email_account_id: currentEmailAccountId,
                         use_openai: true  // Use OpenAI for function calling
                     })
                 });
@@ -1491,7 +1491,7 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        user_id: currentEmailAccountId,
+                        email_account_id: currentEmailAccountId,
                         event_data: {
                             title: title,
                             description: description,
@@ -1508,14 +1508,29 @@
                     const savedCalendarDate = new Date(currentCalendarDate);
                     const savedSelectedDate = selectedEventDate;
 
+                    // Optimistic update: Add the event to local calendarEvents immediately
+                    // This solves the Google Calendar API eventual consistency issue
+                    const newEvent = {
+                        id: result.event_id,
+                        title: title,
+                        description: description,
+                        time: time || 'All Day',
+                        category: category,
+                        start: savedSelectedDate,
+                        end: savedSelectedDate
+                    };
+
+                    if (!calendarEvents[savedSelectedDate]) {
+                        calendarEvents[savedSelectedDate] = [];
+                    }
+                    calendarEvents[savedSelectedDate].push(newEvent);
+                    console.log(`[submitEvent] Optimistically added event to ${savedSelectedDate}:`, newEvent);
+
                     // Hide modal
                     hideAddEventModal();
 
-                    // Temporarily set currentCalendarDate to the saved value to prevent reset
-                    currentCalendarDate = savedCalendarDate;
-
-                    // Reload calendar events to reflect the new event
-                    await loadCalendarEvents();
+                    // Render the calendar with the optimistically updated events
+                    renderCalendar();
 
                     // Re-select the date that was modified and show updated details
                     const dayCell = document.querySelector(`[data-date="${savedSelectedDate}"]`);
@@ -1629,7 +1644,7 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        user_id: currentEmailAccountId,
+                        email_account_id: currentEmailAccountId,
                         event_data: {
                             title: title,
                             description: description,
@@ -1646,12 +1661,19 @@
                     const savedCalendarDate = new Date(currentCalendarDate);
                     const savedEditingDate = editingEventDate;
 
+                    // Optimistic update: Update the event locally
+                    if (calendarEvents[editingEventDate] && calendarEvents[editingEventDate][editingEventIndex]) {
+                        calendarEvents[editingEventDate][editingEventIndex].title = title;
+                        calendarEvents[editingEventDate][editingEventIndex].description = description;
+                        calendarEvents[editingEventDate][editingEventIndex].time = time || 'All Day';
+                        calendarEvents[editingEventDate][editingEventIndex].category = category;
+                        console.log(`[submitEditEvent] Optimistically updated event at ${editingEventDate}`);
+                    }
+
                     hideEditEventModal();
 
-                    // Temporarily set currentCalendarDate to the saved value to prevent reset
-                    currentCalendarDate = savedCalendarDate;
-
-                    await loadCalendarEvents();
+                    // Render the calendar with the optimistically updated events
+                    renderCalendar();
 
                     // Re-select the date that was modified and show updated details
                     const dayCell = document.querySelector(`[data-date="${savedEditingDate}"]`);
@@ -1721,12 +1743,20 @@
                     const savedCalendarDate = new Date(currentCalendarDate);
                     const savedDeletingDate = deletingEventDate;
 
+                    // Optimistic update: Remove the event locally
+                    if (calendarEvents[deletingEventDate] && calendarEvents[deletingEventDate][deletingEventIndex]) {
+                        calendarEvents[deletingEventDate].splice(deletingEventIndex, 1);
+                        // Remove the date key if no events left
+                        if (calendarEvents[deletingEventDate].length === 0) {
+                            delete calendarEvents[deletingEventDate];
+                        }
+                        console.log(`[confirmDeleteEvent] Optimistically removed event from ${deletingEventDate}`);
+                    }
+
                     hideDeleteEventModal();
 
-                    // Temporarily set currentCalendarDate to the saved value to prevent reset
-                    currentCalendarDate = savedCalendarDate;
-
-                    await loadCalendarEvents();
+                    // Render the calendar with the optimistically updated events
+                    renderCalendar();
 
                     // Re-select the date that was modified and show updated details
                     const dayCell = document.querySelector(`[data-date="${savedDeletingDate}"]`);
@@ -1748,8 +1778,11 @@
                 deleteBtn.textContent = 'Delete Event';
             }
         }        // Load calendar events from API (includes both regular and Moodle events)
-        async function loadCalendarEvents() {
+        async function loadCalendarEvents(preserveCalendarDate = false) {
             if (!currentEmailAccountId) return;
+
+            // Save current calendar date if we need to preserve it
+            const savedCalendarDate = preserveCalendarDate ? new Date(currentCalendarDate) : null;
 
             try {
                 // Fetch both regular calendar events and Moodle events in parallel
@@ -1762,8 +1795,12 @@
                 let regularEvents = {};
                 if (regularResponse.ok) {
                     const regularResult = await regularResponse.json();
+                    console.log('[loadCalendarEvents] Regular calendar API response:', regularResult);
                     if (regularResult.status === 'success') {
                         regularEvents = regularResult.events || {};
+                        const eventCount = Object.values(regularEvents).reduce((sum, arr) => sum + arr.length, 0);
+                        console.log(`[loadCalendarEvents] Loaded ${eventCount} regular calendar events across ${Object.keys(regularEvents).length} dates`);
+                        console.log('[loadCalendarEvents] Regular events by date:', regularEvents);
                     } else if (regularResult.status === 'auth_required') {
                         console.log('Calendar authentication required - user needs to connect Gmail');
                         // Don't trigger OAuth popup automatically - let user initiate it
@@ -1801,9 +1838,19 @@
                     }
                 }
 
-                // Reset to current date and update navigation buttons
-                initialCalendarDate = new Date();
-                currentCalendarDate = new Date();
+                const totalEventCount = Object.values(calendarEvents).reduce((sum, arr) => sum + arr.length, 0);
+                console.log(`[loadCalendarEvents] Total merged events: ${totalEventCount} across ${Object.keys(calendarEvents).length} dates`);
+                console.log('[loadCalendarEvents] Final calendarEvents object:', calendarEvents);
+
+                // Only reset to current date if not preserving calendar date
+                if (!preserveCalendarDate) {
+                    initialCalendarDate = new Date();
+                    currentCalendarDate = new Date();
+                } else if (savedCalendarDate) {
+                    // Restore the saved calendar date
+                    currentCalendarDate = savedCalendarDate;
+                }
+
                 updateNavigationButtons();
                 renderCalendar();
             } catch (error) {
