@@ -1,6 +1,9 @@
 # Mail Agent
 
-NOTE: Currently the mcp server part is not working properly due to a change I did somewhere (known). I made the project public anyway to display the code.
+NOTE: 
+1) Currently the mcp server part is not working properly due to a change I did somewhere (known). 
+2) The project is UNFINISHED. Tasks remain in my to-do's (such as encryption, AI guardarils etc.) that I will complete once I am able to continue on the project.
+3) I made the project public despite being unfinished as I had it in my CV with no code to show, and the completion date is uncertain.
 
 An AI-powered Gmail and calendar manager that caches emails locally, builds semantic embeddings for search, and integrates with Google Calendar. It uses a **hybrid Python–Go** setup: FastAPI serves the API and UI, and an optional Go microservice handles high-throughput email fetching and embedding.
 
@@ -39,7 +42,7 @@ python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
 
 Open **http://localhost:8000** for the app. No separate JavaScript server; the frontend is served by FastAPI.
 
-**2. Go email-sync server (optional, recommended for sync)**
+**2. Go email-sync server (optional unless an account is connected)**
 
 ```bash
 cd backend/go-server
@@ -49,12 +52,11 @@ go run .
 
 Runs on port **8001**. If it’s not running, the Python app falls back to its own sync implementation.
 
-**3. Ollama (optional, for embeddings / local LLM)**
+**3. Ollama (optional unless an account is connected)**
 
 ```bash
 ollama serve
-# and e.g.:
-ollama pull mxbai-embed-large
+
 ```
 
 **4. MCP server (optional, for LLM tool integration)**
