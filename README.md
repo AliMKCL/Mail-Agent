@@ -138,7 +138,8 @@ Mail-Agent/
 │   ├── test_mcp_tools.py           # Unit and integration tests for MCP tool endpoints
 │   ├── test_rate_limiter.py        # Verification tests for the rate limiter service
 │   └── conftest.py                 # Pytest fixtures and mock DB configurations
-├── requirements.txt                # Python dependencies
+├── pyproject.toml                  # Project metadata & dependencies (uv)
+├── uv.lock                         # Locked, reproducible dependency versions
 ├── pytest.ini                      # Test runner configuration
 └── README.md                       # Project documentation
 ```
@@ -194,21 +195,25 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 ```
 
 ### 3. Installation
-Create and activate a Python virtual environment, then install required packages:
+This project uses [**uv**](https://docs.astral.sh/uv/) as its package manager. Install uv once (macOS/Linux):
 
 ```bash
-# Create virtual environment
-python3 -m venv .mail_venv
-
-# Activate virtual environment
-# On macOS / Linux:
-source .mail_venv/bin/activate
-# On Windows:
-# .mail_venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+
+or
+
+```bash
+brew install uv
+```
+
+Then sync the project's virtual environment and dependencies (`uv` reads `.python-version`, installs Python 3.12 if needed, and creates `.venv` automatically):
+
+```bash
+uv sync
+```
+
+No manual `venv create` / `activate` / `pip install` steps are required. Run any command inside the environment with `uv run <cmd>`, or activate it directly with `source .venv/bin/activate` if you prefer.
 
 ### 4. Setup Ollama Models
 Ensure Ollama is running and download the embedding and chat models:
@@ -230,7 +235,7 @@ ollama pull mistral:latest
 
 ### Option 1: Run with High-Throughput Microservices (Recommended)
 
-Run each service in separate terminal tabs with the virtual environment activated:
+Run each service in separate terminal tabs (uv resolves the environment automatically, no activation needed):
 
 ```bash
 # Tab 1: Rate Limiter Microservice (Port 8002)
@@ -242,7 +247,7 @@ cd backend/go-server
 go run .
 
 # Tab 3: Python FastAPI Application & Web UI (Port 8000)
-python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open **http://localhost:8000** in your browser.
@@ -256,7 +261,7 @@ If you do not run the Go servers:
 - **Rate Limiting:** The Python rate limiter client will fail open gracefully, allowing requests to proceed without disruption.
 
 ```bash
-python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ---
@@ -267,10 +272,10 @@ To run the MCP server for external agent tools or test with the MCP Inspector:
 
 ```bash
 # Standalone execution
-python backend/mcp_server.py
+uv run python backend/mcp_server.py
 
 # Or inspect with MCP Inspector
-npx @modelcontextprotocol/inspector python backend/mcp_server.py
+npx @modelcontextprotocol/inspector uv run python backend/mcp_server.py
 ```
 
 ---
@@ -330,19 +335,19 @@ Helper scripts in `backend/utilities/` can be executed directly:
 
 ```bash
 # Add a new Gmail account via CLI OAuth flow
-python backend/utilities/add_user.py
+uv run python backend/utilities/add_user.py
 
 # List all accounts and linked emails in the database
-python backend/utilities/list_users.py
+uv run python backend/utilities/list_users.py
 
 # Re-authenticate an email account whose tokens expired or failed
-python backend/utilities/reauth_user.py
+uv run python backend/utilities/reauth_user.py
 
 # Delete all events in a specified date range
-python backend/utilities/delete_calendar_events.py
+uv run python backend/utilities/delete_calendar_events.py
 
 # Test direct inference against local Ollama instance
-python backend/utilities/ask_ollama.py
+uv run python backend/utilities/ask_ollama.py
 ```
 
 ---
@@ -353,15 +358,15 @@ The repository contains an automated test suite with pytest covering integration
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run tests with detailed output
-pytest -v -s
+uv run pytest -v -s
 
 # Run specific test suites
-pytest tests/test_endpoints_integration.py
-pytest tests/test_rate_limiter.py
-pytest tests/test_mcp_tools.py
+uv run pytest tests/test_endpoints_integration.py
+uv run pytest tests/test_rate_limiter.py
+uv run pytest tests/test_mcp_tools.py
 ```
 
 > [!TIP]
@@ -373,10 +378,10 @@ pytest tests/test_mcp_tools.py
 
 | Action | Command |
 |---|---|
-| **Web App (FastAPI)** | `python -m uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000` |
+| **Web App (FastAPI)** | `uv run uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000` |
 | **Go Sync Server** | `cd backend/go-server && go run .` |
 | **Go Rate Limiter** | `cd ratelimiter && go run .` |
 | **Ollama Service** | `ollama serve` |
 | **Pull Embedding Model** | `ollama pull mxbai-embed-large` |
-| **Add Gmail Account** | Web UI at `http://localhost:8000` or `python backend/utilities/add_user.py` |
-| **Run Test Suite** | `pytest` |
+| **Add Gmail Account** | Web UI at `http://localhost:8000` or `uv run python backend/utilities/add_user.py` |
+| **Run Test Suite** | `uv run pytest` |

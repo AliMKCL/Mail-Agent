@@ -18,7 +18,7 @@ def slm_response(query: str):
     url = url + "/api/chat"
 
     payload = {
-        "model": "mistral:latest",  # Replace with the model name you're using
+        "model": "qwen3.8:27b-mlx  ",  # Replace with the model name you're using
         "messages": [{"role": "user", "content": query}]
     }
 

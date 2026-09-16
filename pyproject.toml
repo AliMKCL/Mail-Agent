@@ -1,0 +1,41 @@
+[project]
+name = "mail-agent"
+version = "0.1.0"
+description = "AI-powered Gmail and Google Calendar intelligent assistant with local vector search and agentic LLM tools"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Google API
+    "google-auth>=2.23.0",
+    "google-auth-oauthlib==1.2.1",
+    "google-auth-httplib2==0.2.0",
+    "google-api-python-client==2.143.0",
+    # Web framework
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    # Database
+    "sqlalchemy>=2.0.36",
+    # HTML/Email processing
+    "beautifulsoup4==4.12.2",
+    "lxml>=5.0.0",
+    # Vector database
+    "chromadb>=0.4.0",
+    "langchain-ollama>=0.1.0",
+    "langchain-chroma>=0.1.0",
+    "langchain-core>=0.2.0",
+    # MCP Server
+    "fastmcp>=0.1.0",
+    # LLM Integration
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.24.0",
+]
+
+[tool.uv]
+package = false
