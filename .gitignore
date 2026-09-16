@@ -1,29 +1,74 @@
+# --- Secrets & Credentials ---
 credentials.json
-data.json
-synthetic_data.json
-
-.env
-
 token.json
+*token*.json
+.env
+.env.*
+!.env.example
 
-.venv
+# --- Python Virtual Environments ---
+.venv/
+venv/
+env/
 
-# Database files
+# --- Python Caches & Build Artifacts ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+
+# --- Linter, Formatter & Test Caches ---
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# --- Database & Vector Store ---
 gmail_agent.db
 *.db
+*.sqlite
 *.sqlite3
+vector_database/
+chroma/
 
-*synthetic_data.json
+# --- Data & Synthetic Datasets ---
+data.json
 *data.json
+synthetic_data.json
+*synthetic_data.json
 
-vector_database
+# --- Go Binaries & Build Artifacts ---
+ratelimiter/ratelimiter
+backend/go-server/go-server
+*.exe
+*.test
+*.out
 
-__pycache__/
-.pytest_cache/
+# --- Logs ---
+*.log
+ratelimiter.log
 
+# --- OS & Editor Files ---
 .DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
 
+# --- Local AI Tooling & Scratch Docs ---
+.pi/
+.agent/
 CLAUDE.md
 old_batch_logic.txt
 project_description.md
 test_setup.md
+

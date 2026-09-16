@@ -30,7 +30,7 @@ def test_db(tmp_path):
     Create a fresh SQLite database file for each test.
     Uses a temp file because in-memory SQLite doesn't share across connections/threads.
     """
-    from backend.app import db_manager
+    from backend.dependencies import db_manager
 
     # Create test database file
     db_path = tmp_path / "test.db"

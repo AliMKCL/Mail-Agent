@@ -35,7 +35,29 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "httpx>=0.24.0",
+    "ruff>=0.16.8",
 ]
 
 [tool.uv]
 package = false
+
+
+[tool.pyright]
+# Tell Pyright to use the .venv created by uv in the repo root
+venvPath = "."
+venv = ".venv"
+
+# If Python code is at root, use [ "." ], or specify your folders
+include = ["."]
+
+# Explicitly ignore non-Python directories and build outputs to keep indexing fast
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "build",
+    "dist"
+]
+
+# Set your target Python version to match your uv python pin
+pythonVersion = "3.12"

@@ -23,7 +23,8 @@ import hashlib
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.app import app, db_manager
+from backend.app import app
+from backend.dependencies import db_manager
 from backend.databases.database import DatabaseManager, Base, Account, EmailAccount
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -68,13 +69,13 @@ def setup_test_db(test_db_path):
     test_db_manager = DatabaseManager(f"sqlite:///{test_db_path}")
     
     # Patch the app's db_manager to use test database
-    import backend.app as app_module
-    app_module.db_manager = test_db_manager
+    import backend.dependencies as dependencies_module
+    dependencies_module.db_manager = test_db_manager
     
     yield test_db_manager
     
     # Restore original db_manager
-    app_module.db_manager = _original_db_manager
+    dependencies_module.db_manager = _original_db_manager
     
     # Cleanup
     if os.path.exists(test_db_path):
@@ -84,7 +85,7 @@ def setup_test_db(test_db_path):
 @pytest.fixture(scope="module")
 def mock_rate_limiter(setup_test_db):
     """Mock rate limiter to always allow requests during tests"""
-    from backend.app import limiter
+    from backend.dependencies import limiter
     original_check = limiter.check
     
     def mock_check(*args, **kwargs):
@@ -289,10 +290,10 @@ class TestEmailEndpoints:
         assert len(data) <= 5
     
     # Mocks GMAIL API calls - but makes REAL HTTP requests to /api/sync endpoint
-    @patch('backend.app.get_service')
-    @patch('backend.app.list_message_ids')
-    @patch('backend.app.store_in_vector_db')
-    @patch('backend.app.requests.post')
+    @patch('backend.controllers.emails.get_service')
+    @patch('backend.controllers.emails.list_message_ids')
+    @patch('backend.controllers.emails.store_in_vector_db')
+    @patch('backend.controllers.emails.requests.post')
     def test_sync_emails_success(
         self, 
         mock_requests_post,
@@ -371,7 +372,7 @@ class TestCalendarEndpoints:
         data = response.json()
         assert "email_account_id parameter is required" in data["detail"]
     
-    @patch('backend.app.get_calendar_service')
+    @patch('backend.controllers.calendar.get_calendar_service')
     def test_get_calendar_events_success(self, mock_calendar_service, client, test_user):
         """Test GET /api/calendar/events returns calendar events"""
         # Mock Google Calendar API
@@ -415,7 +416,7 @@ class TestCalendarEndpoints:
         events_dict = data["events"]
         assert len(events_dict) > 0
     
-    @patch('backend.app.get_calendar_service')
+    @patch('backend.controllers.calendar.get_calendar_service')
     def test_create_calendar_event_success(self, mock_calendar_service, client, test_user):
         """Test POST /api/calendar/events creates new event"""
         # Mock Calendar service
@@ -475,7 +476,7 @@ class TestCalendarEndpoints:
         # Should handle missing fields gracefully
         assert response.status_code in [400, 422, 500]
     
-    @patch('backend.app.get_calendar_service')
+    @patch('backend.controllers.calendar.get_calendar_service')
     def test_update_calendar_event_success(self, mock_calendar_service, client, test_user):
         """Test PUT /api/calendar/events/{event_id} updates event"""
         mock_service = MagicMock()
@@ -515,7 +516,7 @@ class TestCalendarEndpoints:
         assert data["status"] == "success"
         assert "event_link" in data
     
-    @patch('backend.app.get_calendar_service')
+    @patch('backend.controllers.calendar.get_calendar_service')
     def test_delete_calendar_event_success(self, mock_calendar_service, client, test_user):
         """Test DELETE /api/calendar/events/{event_id} deletes event"""
         mock_service = MagicMock()
@@ -545,7 +546,7 @@ class TestCalendarEndpoints:
 class TestMoodleEndpoints:
     """Test Moodle calendar integration endpoints"""
     
-    @patch('backend.app.get_moodle_events_for_api')
+    @patch('backend.controllers.calendar.get_moodle_events_for_api')
     def test_get_moodle_events_success(self, mock_moodle, client, test_user):
         """Test GET /api/calendar/moodle returns Moodle events"""
         # Mock Moodle API response
@@ -586,8 +587,8 @@ class TestVectorDBEndpoints:
         # API returns 422 (query param validation) - acceptable
         assert response.status_code in [400, 422]
     
-    @patch('backend.app.query_vector_db', new_callable=AsyncMock)
-    @patch('backend.app.llm_response')
+    @patch('backend.controllers.llm.query_vector_db', new_callable=AsyncMock)
+    @patch('backend.controllers.llm.llm_response')
     def test_query_with_results(self, mock_llm, mock_vector_query, client):
         """Test GET /api/query returns AI response with sources"""
         # Mock vector DB results
@@ -632,7 +633,7 @@ class TestVectorDBEndpoints:
         assert "subject" in source
         assert "date_sent" in source
     
-    @patch('backend.app.query_vector_db', new_callable=AsyncMock)
+    @patch('backend.controllers.llm.query_vector_db', new_callable=AsyncMock)
     def test_query_no_results(self, mock_vector_query, client):
         """Test GET /api/query handles no results gracefully"""
         # Mock async query_vector_db returning empty list
