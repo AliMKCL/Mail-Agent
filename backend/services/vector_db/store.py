@@ -1,0 +1,94 @@
+from langchain_ollama import OllamaEmbeddings
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+
+from backend.services.vector_db.config import CHROMA_DIR, EMBED_MODEL
+
+# Load the local embeddings model
+embeddings = OllamaEmbeddings(model=EMBED_MODEL)
+
+# persist directory and model name come from config (identical absolute path)
+db_location = CHROMA_DIR
+
+collection = Chroma(
+    persist_directory=db_location, 
+    collection_name="mails",
+    embedding_function=embeddings)
+
+
+async def embed_and_store(mails: list[dict]):
+    """Embed and store emails in the vector database
+    
+    Args:
+        mails: List of email dictionaries with keys: message_id, sender, subject, date_sent, body_text
+        Note: body_text should contain the cleaned email content
+    """
+    documents = []
+    ids = []
+    
+    for mail in mails:
+        # Create a Document object with the cleaned email body as content
+        # and metadata for filtering/searching
+        doc = Document(
+            page_content=mail.get('body_text', ''),  # This contains cleaned content
+            metadata={
+                'message_id': mail.get('message_id', ''),
+                'sender': mail.get('sender', ''),
+                'subject': mail.get('subject', ''),
+                'date_sent': str(mail.get('date_sent', ''))
+            }
+        )
+        documents.append(doc)
+        # Use the actual message_id as the unique identifier
+        ids.append(mail.get('message_id', ''))
+    
+    # Add documents to the vector database
+    if documents:
+        collection.add_documents(documents, ids=ids)
+
+async def query_vector_db(query: str, top_k: int = 2) -> list[Document]:
+    """Query the vector database for similar documents
+    
+    Args:
+        query: The query string to search for
+        top_k: Number of top similar documents to retrieve"""
+    
+    embedded_query = embeddings.embed_query(query)
+
+    results = collection.similarity_search_by_vector(   # The query method for Chroma with LangChain.
+        embedded_query,
+        k=top_k
+    )
+
+    return results
+
+
+async def store_in_vector_db(mails: list[dict]):
+    """Store mails in the vector database with the precomputed embeddings (no additional embeddings)"""
+    
+    documents = []
+    ids = []
+    metadatas = []
+    vectors = []
+    for mail in mails:
+        ids.append(mail.get('message_id', ''))
+        vectors.append(mail.get('embedding', []))
+        documents.append(mail.get('body_text', ''))
+        metadatas.append({
+            'message_id': mail.get('message_id', ''),
+            'sender': mail.get('sender', ''),
+            'subject': mail.get('subject', ''),
+            'date_sent': str(mail.get('date_sent', ''))
+        })
+    
+    collection._collection.add(ids=ids,
+                                embeddings=vectors, 
+                                documents=documents, 
+                                metadatas=metadatas)
+        
+
+
+
+
+
+
