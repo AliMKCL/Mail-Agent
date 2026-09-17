@@ -1,0 +1,20 @@
+{
+  "body": {
+    "account_id": 3,
+    "email_account_id": 3,
+    "message": "Sign-up successful",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": {
+      "email": "thirduser@gmail.com",
+      "password": "testpassword3"
+    },
+    "method": "POST",
+    "params": null,
+    "path": "/api/auth/signup"
+  },
+  "status": 200
+}

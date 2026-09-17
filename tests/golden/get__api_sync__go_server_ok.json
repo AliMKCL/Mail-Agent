@@ -1,0 +1,19 @@
+{
+  "body": {
+    "message": "Synced 2 new emails",
+    "new_emails": 2,
+    "status": "success",
+    "total_fetched": 1
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/sync"
+  },
+  "status": 200
+}

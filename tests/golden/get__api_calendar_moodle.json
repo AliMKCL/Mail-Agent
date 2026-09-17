@@ -1,0 +1,16 @@
+{
+  "body": {
+    "detail": "Calendar 'Moodle' not found"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/calendar/moodle"
+  },
+  "status": 500
+}

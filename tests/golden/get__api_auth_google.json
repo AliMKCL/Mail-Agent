@@ -1,0 +1,18 @@
+{
+  "body": {
+    "auth_url": "https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=<VOLATILE>&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Foauth%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar&state=1&access_type=offline&include_granted_scopes=true&prompt=consent",
+    "state": "1",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/auth/google"
+  },
+  "status": 200
+}

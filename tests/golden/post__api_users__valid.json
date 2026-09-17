@@ -1,0 +1,23 @@
+{
+  "body": {
+    "account_id": 1,
+    "created_at": "<VOLATILE>",
+    "email": "extra@gmail.com",
+    "id": 4,
+    "is_primary": 0,
+    "message": "Email account added successfully. Please authenticate with Google."
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": {
+      "account_id": 1,
+      "email": "extra@gmail.com",
+      "name": "Extra Mailbox"
+    },
+    "method": "POST",
+    "params": null,
+    "path": "/api/users"
+  },
+  "status": 200
+}

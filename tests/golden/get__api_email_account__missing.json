@@ -1,0 +1,14 @@
+{
+  "body": {
+    "detail": "Email account not found"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": null,
+    "path": "/api/email-account/99999"
+  },
+  "status": 404
+}

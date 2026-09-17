@@ -1,0 +1,15 @@
+{
+  "body": "\n        <html>\n            <head>\n                <title>Authorization Complete</title>\n                <script>\n                    // Redirect to main.html after 2 seconds\n                    setTimeout(function() {\n                        window.location.href = '/templates/main.html';\n                    }, 2000);\n                </script>\n            </head>\n            <body style=\"font-family: Arial, sans-serif; text-align: center; padding: 50px;\">\n                <h2 style=\"color: #4CAF50;\">✅ Authorization successful!</h2>\n                <p>Your Gmail account has been connected.</p>\n                <p>Redirecting you back to the app...</p>\n            </body>\n        </html>\n        ",
+  "content_type": "text/html; charset=utf-8",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "code": "golden-auth-code",
+      "state": "1"
+    },
+    "path": "/oauth/callback"
+  },
+  "status": 200
+}

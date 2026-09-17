@@ -1,0 +1,17 @@
+{
+  "body": {
+    "message": "Event deleted successfully",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "DELETE",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/calendar/events/event_001"
+  },
+  "status": 200
+}

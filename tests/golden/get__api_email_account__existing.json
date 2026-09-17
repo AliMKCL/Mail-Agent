@@ -1,0 +1,19 @@
+{
+  "body": {
+    "account_id": 1,
+    "created_at": "<VOLATILE>",
+    "email": "testuser@gmail.com",
+    "id": 1,
+    "is_primary": 1,
+    "provider": "gmail"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": null,
+    "path": "/api/email-account/1"
+  },
+  "status": 200
+}

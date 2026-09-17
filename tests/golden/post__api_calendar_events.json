@@ -1,0 +1,26 @@
+{
+  "body": {
+    "event_id": "event_002",
+    "event_link": "https://calendar.google.com/event?id=event_002",
+    "message": "Event created successfully",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": {
+      "email_account_id": 1,
+      "event_data": {
+        "category": "Academic",
+        "date": "2025-11-24",
+        "description": "Created by the golden capture",
+        "time": "02:30 PM",
+        "title": "Golden Event"
+      }
+    },
+    "method": "POST",
+    "params": null,
+    "path": "/api/calendar/events"
+  },
+  "status": 200
+}

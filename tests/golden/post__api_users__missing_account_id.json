@@ -1,0 +1,17 @@
+{
+  "body": {
+    "detail": "account_id is required. User must be logged in to add email accounts."
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": {
+      "email": "orphan@gmail.com",
+      "name": "Orphan"
+    },
+    "method": "POST",
+    "params": null,
+    "path": "/api/users"
+  },
+  "status": 400
+}

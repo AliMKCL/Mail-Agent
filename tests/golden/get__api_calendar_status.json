@@ -1,0 +1,18 @@
+{
+  "body": {
+    "email_account_id": 1,
+    "message": "Calendar service is working for email account 1",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/calendar/status"
+  },
+  "status": 200
+}

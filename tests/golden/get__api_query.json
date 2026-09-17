@@ -1,0 +1,27 @@
+{
+  "body": {
+    "answer": "Based on your emails, you have a meeting tomorrow at 10am.",
+    "count": 1,
+    "sources": [
+      {
+        "date_sent": "2025-11-22",
+        "message_id": "msg_002",
+        "sender": "boss@company.com",
+        "subject": "Meeting Tomorrow"
+      }
+    ],
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "query": "When is the meeting?",
+      "top_k": 3
+    },
+    "path": "/api/query"
+  },
+  "status": 200
+}

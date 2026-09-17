@@ -1,0 +1,25 @@
+{
+  "body": {
+    "event_link": "https://calendar.google.com/event?id=event_001",
+    "message": "Event updated successfully",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": {
+      "email_account_id": 1,
+      "event_data": {
+        "category": "Personal",
+        "date": "2025-11-25",
+        "description": "Updated by the golden capture",
+        "time": "All Day",
+        "title": "Existing Event (updated)"
+      }
+    },
+    "method": "PUT",
+    "params": null,
+    "path": "/api/calendar/events/event_001"
+  },
+  "status": 200
+}

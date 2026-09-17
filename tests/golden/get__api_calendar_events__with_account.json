@@ -1,0 +1,30 @@
+{
+  "body": {
+    "events": {
+      "2025-11-23": [
+        {
+          "category": "Academic",
+          "description": "Test description",
+          "end": "2025-11-23T11:00:00Z",
+          "id": "event_001",
+          "start": "2025-11-23T10:00:00Z",
+          "time": "10:00 AM",
+          "title": "Existing Event"
+        }
+      ]
+    },
+    "message": "Calendar events retrieved successfully",
+    "status": "success"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/calendar/events"
+  },
+  "status": 200
+}

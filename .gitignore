@@ -36,6 +36,10 @@ gmail_agent.db
 vector_database/
 chroma/
 
+# --- Pre-refactor safety backups (Wave 0) ---
+*.bak-prerefactor
+*.bak-prerefactor/
+
 # --- Data & Synthetic Datasets ---
 data.json
 *data.json
@@ -67,6 +71,7 @@ ehthumbs.db
 # --- Local AI Tooling & Scratch Docs ---
 .pi/
 .agent/
+.omp/
 CLAUDE.md
 old_batch_logic.txt
 project_description.md

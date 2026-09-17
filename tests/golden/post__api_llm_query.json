@@ -1,0 +1,18 @@
+{
+  "body": {
+    "detail": "Error processing LLM query: process_llm_query() got an unexpected keyword argument 'user_id'"
+  },
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": {
+      "email_account_id": 1,
+      "query": "Find deadlines in my emails",
+      "use_openai": true
+    },
+    "method": "POST",
+    "params": null,
+    "path": "/api/llm-query"
+  },
+  "status": 500
+}

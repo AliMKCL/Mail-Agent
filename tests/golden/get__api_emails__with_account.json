@@ -1,0 +1,37 @@
+{
+  "body": [
+    {
+      "body_html": "",
+      "body_text": "Please join the meeting tomorrow at 10am in conference room A.",
+      "created_at": "<VOLATILE>",
+      "date_sent": "<VOLATILE>",
+      "id": "msg_002",
+      "recipient": "testuser@gmail.com",
+      "sender": "boss@company.com",
+      "snippet": "Meeting at 10am",
+      "subject": "Meeting Tomorrow"
+    },
+    {
+      "body_html": "<p>This is the full body of test email 1.</p>",
+      "body_text": "This is the full body of test email 1. It contains important information.",
+      "created_at": "<VOLATILE>",
+      "date_sent": "<VOLATILE>",
+      "id": "msg_001",
+      "recipient": "testuser@gmail.com",
+      "sender": "sender1@example.com",
+      "snippet": "This is a test snippet",
+      "subject": "Test Email 1"
+    }
+  ],
+  "content_type": "application/json",
+  "ratelimit_headers": {},
+  "request": {
+    "json": null,
+    "method": "GET",
+    "params": {
+      "email_account_id": 1
+    },
+    "path": "/api/emails"
+  },
+  "status": 200
+}
