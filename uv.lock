@@ -1801,19 +1801,20 @@ dependencies = [
     { name = "google-auth" },
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
+    { name = "httpx" },
     { name = "langchain-chroma" },
     { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "lxml" },
     { name = "openai" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -1829,19 +1830,20 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.23.0" },
     { name = "google-auth-httplib2", specifier = "==0.2.0" },
     { name = "google-auth-oauthlib", specifier = "==1.2.1" },
+    { name = "httpx", specifier = ">=0.24.0" },
     { name = "langchain-chroma", specifier = ">=0.1.0" },
     { name = "langchain-core", specifier = ">=0.2.0" },
     { name = "langchain-ollama", specifier = ">=0.1.0" },
     { name = "lxml", specifier = ">=5.0.0" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.24.0" },
     { name = "pytest", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "ruff", specifier = ">=0.16.8" },
