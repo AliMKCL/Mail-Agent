@@ -51,8 +51,64 @@ Known-bug behaviour captured ON PURPOSE (do not "fix" these)
 * X1: ``POST /api/auth/signup`` with an existing email and a *different*
   password returns 200 with the pre-existing ``account_id``.
 * X2: ``GET /api/users`` with no ``account_id`` returns every tenant's mailbox.
-* P3: ``POST /api/llm-query`` passes the wrong kwarg to ``process_llm_query`` and
-  blows up at runtime. Whatever that produces today is the golden value.
+* P3 is the ONE exception. The monolith's ``POST /api/llm-query`` passed
+  ``user_id=`` to a ``process_llm_query`` whose signature takes
+  ``email_account_id=``, so it 500d on every request. Wave 5 fixed it
+  deliberately, so ``post__api_llm_query.json`` is the only golden that was
+  re-baselined for the split. Every other golden is byte-identical to the
+  monolith capture.
+
+--------------------------------------------------------------------------------
+The stack the requests are driven against (Wave 6)
+--------------------------------------------------------------------------------
+``harness`` builds all six services in ONE process and wires them together with
+``httpx.ASGITransport``. No socket is ever bound, so ports 8000/8010/8020/8030/
+8040/8050 stay down for the whole run:
+
+* Database (:8030) — the real app, ``get_db_manager`` overridden to a
+  ``DatabaseManager`` on a throwaway temp SQLite file. This fixture is the only
+  sanctioned place outside ``backend/services/database/`` that may construct one
+  (R1).
+* Vector DB (:8040) — the real app with ``store.collection`` and
+  ``store.embeddings`` replaced by in-memory fakes. ``langchain_chroma.Chroma``
+  and ``langchain_ollama.OllamaEmbeddings`` are patched for the duration of the
+  import too, so the real ``vector_database/`` directory is never opened. That
+  ends the addendum-C2 behaviour where a golden run changed the md5 of
+  ``vector_database/chroma.sqlite3``.
+* Accounts (:8010), User_data (:8020), MCP (:8050) — the real apps, with each
+  service's client providers overridden through ``app.dependency_overrides`` to
+  ``AsyncServiceClient``s carrying an ``ASGITransport``.
+* Gateway (:8000) — the real app, with ``proxy.set_client_factory`` installing
+  ASGITransport-backed clients for its three upstreams.
+
+--------------------------------------------------------------------------------
+Externals, and where they are mocked
+--------------------------------------------------------------------------------
+Everything is patched at the binding the SERVICES resolve, never the deleted
+``backend.controllers.*`` paths:
+
+* Gmail — ``backend.services.user_data.gmail.get_service``.
+* Google Calendar — ``backend.services.user_data.google_calendar
+  .get_calendar_service``. That is the single binding: ``moodle.py`` and
+  ``routers/calendar.py`` both reach it as a module attribute, which is what
+  retires CONTRACT_FREEZE hazard 1 (the monolith had two independent bindings).
+* The Go sync server — ``requests.post`` inside
+  ``backend.services.user_data.sync``.
+* OAuth token exchange — ``Flow`` in ``backend.services.accounts.routers.oauth``.
+  Deliberately NOT ``google_oauth.Flow``: ``GET /api/auth/google`` must keep
+  building its real URL from ``credentials.json`` (that call is offline), and the
+  golden asserts that URL with only ``client_id`` scrubbed.
+* The rate limiter — ``get_limiter`` on User_data and MCP.
+* OpenAI — ``openai.AsyncOpenAI``. ``backend.services.mcp.llm_integration``
+  imports it inside ``process_with_openai``, so the module attribute is the only
+  correct patch point. This one is non-negotiable: ``.env`` holds a real
+  ``OPENAI_API_KEY`` and ``ask_ollama`` calls ``load_dotenv()`` at import, so an
+  unmocked path would make a live billed call and produce a non-deterministic
+  golden. ``OPENAI_API_KEY`` is additionally overwritten with a dummy value for
+  the duration of the harness.
+* The local LLM helpers — ``llm_response`` in
+  ``backend.services.mcp.http_app`` and ``slm_response`` in
+  ``backend.services.mcp.ask_ollama`` (imported at call time).
 
 --------------------------------------------------------------------------------
 Environment dependencies
@@ -61,7 +117,7 @@ Environment dependencies
 root. That file is gitignored; without it the endpoint returns 500 instead of
 200 and the golden will not replay. The real ``gmail_agent.db`` and
 ``vector_database/`` are never read or written: the database is redirected to a
-throwaway temp file and every Chroma/Ollama/Google/Go/rate-limiter call is
+throwaway temp file and every Chroma/Ollama/Google/Go/OpenAI/rate-limiter call is
 mocked.
 """
 
@@ -87,28 +143,62 @@ import base64
 import hashlib
 import importlib
 import json
+import os
 import re
 import shutil
 import tempfile
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
+import httpx
 import requests
 from fastapi.testclient import TestClient
 from google.oauth2.credentials import Credentials
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from backend import dependencies
-from backend.databases.database import Base
+# The Vector DB service builds its Chroma client and its Ollama embedding model
+# at module import time, against the REAL ``vector_database/`` directory. Both
+# constructors are patched for the duration of the import so the directory is
+# never opened -- this is what stops a golden run from changing the md5 of
+# ``vector_database/chroma.sqlite3`` (addendum C2). The module-scope objects are
+# then replaced wholesale by in-memory fakes inside ``harness``.
+with patch("langchain_chroma.Chroma"), patch("langchain_ollama.OllamaEmbeddings"):
+    from backend.services.vector_db import store
+    from backend.services.vector_db.app import app as vector_db_app
+
+from backend.gateway import proxy
+from backend.libs.common.http import AsyncServiceClient
+from backend.services.accounts import clients as accounts_clients
+from backend.services.accounts.app import app as accounts_app
+from backend.services.accounts.routers import oauth as accounts_oauth
+from backend.services.database.app import app as database_app
+from backend.services.database.manager import DatabaseManager, get_db_manager
+from backend.services.mcp import ask_ollama as mcp_ask_ollama
+from backend.services.mcp import clients as mcp_clients
+from backend.services.mcp import http_app as mcp_http_app
+from backend.services.mcp.http_app import app as mcp_app
+from backend.services.user_data import clients as user_data_clients
+from backend.services.user_data import gmail, google_calendar
+from backend.services.user_data import sync as user_data_sync
+from backend.services.user_data.app import app as user_data_app
 
 GOLDEN_DIR = Path(__file__).resolve().parent
 
-# The app the goldens are captured FROM. Always the monolith: the goldens record
-# pre-refactor behaviour. test_parity.py has its own (Wave-6 repointable) target.
-CAPTURE_APP_IMPORT = "backend.app:app"
+# The app the goldens are captured FROM. Wave 6: the monolith is gone as a
+# target; the goldens are now captured from -- and replayed against -- the
+# Gateway in front of the six-service stack ``harness`` builds.
+CAPTURE_APP_IMPORT = "backend.gateway.app:app"
+
+# Base URLs for the in-process clients. The path component must be empty: the
+# Gateway proxy forwards ``request.url.path`` as a RELATIVE url and ``httpx``
+# merges it onto the client's base_url.
+ACCOUNTS_BASE_URL = "http://accounts.golden"
+USER_DATA_BASE_URL = "http://user-data.golden"
+MCP_BASE_URL = "http://mcp.golden"
+DATABASE_BASE_URL = "http://database.golden"
+VECTOR_DB_BASE_URL = "http://vector-db.golden"
 
 PLACEHOLDER = "<VOLATILE>"
 
@@ -607,35 +697,100 @@ def build_calendar_service_mock():
     return service, events_store
 
 
-def build_vector_db_mock():
-    """Mock vector database query function (tests/conftest.py::mock_vector_db)."""
-    mock_doc1 = MagicMock()
-    mock_doc1.page_content = "Meeting tomorrow at 10am in conference room"
-    mock_doc1.metadata = {
-        "message_id": "msg_002",
-        "sender": "boss@company.com",
-        "subject": "Meeting Tomorrow",
-        "date_sent": "2025-11-22",
-    }
+#: The two documents ``tests/conftest.py::mock_vector_db`` returned, verbatim.
+#: They are the corpus ``GET /api/query`` retrieves from.
+_VECTOR_DOCUMENTS = (
+    SimpleNamespace(
+        page_content="Meeting tomorrow at 10am in conference room",
+        metadata={
+            "message_id": "msg_002",
+            "sender": "boss@company.com",
+            "subject": "Meeting Tomorrow",
+            "date_sent": "2025-11-22",
+        },
+    ),
+    SimpleNamespace(
+        page_content="Project deadline is next Friday",
+        metadata={
+            "message_id": "msg_003",
+            "sender": "pm@company.com",
+            "subject": "Project Deadline",
+            "date_sent": "2025-11-21",
+        },
+    ),
+)
 
-    mock_doc2 = MagicMock()
-    mock_doc2.page_content = "Project deadline is next Friday"
-    mock_doc2.metadata = {
-        "message_id": "msg_003",
-        "sender": "pm@company.com",
-        "subject": "Project Deadline",
-        "date_sent": "2025-11-21",
-    }
 
-    async def mock_query(query, top_k=3):
-        # Return relevant docs based on query keywords
-        if "meeting" in query.lower():
-            return [mock_doc1]
-        elif "deadline" in query.lower():
-            return [mock_doc2]
-        return [mock_doc1, mock_doc2]
+def _vector_hits(query: str) -> list[SimpleNamespace]:
+    """``tests/conftest.py::mock_vector_db``'s keyword branching, unchanged."""
+    doc1, doc2 = _VECTOR_DOCUMENTS
+    if "meeting" in query.lower():
+        return [doc1]
+    if "deadline" in query.lower():
+        return [doc2]
+    return [doc1, doc2]
 
-    return mock_query
+
+class GoldenEmbeddings:
+    """Stands in for ``store.embeddings`` (``OllamaEmbeddings``). No network.
+
+    ``store.query_vector_db`` embeds the query and then hands only the VECTOR to
+    ``similarity_search_by_vector``, so the query text has to travel out of band
+    for the keyword branching above to survive. It is recorded here and read by
+    :class:`GoldenCollection`.
+    """
+
+    def __init__(self) -> None:
+        self.last_query = ""
+
+    def embed_query(self, text):
+        self.last_query = text
+        return [0.1, 0.2, 0.3]
+
+    def embed_documents(self, texts):
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
+class GoldenRawCollection:
+    """Stands in for ``collection._collection`` — the Go-sync ``/store`` path."""
+
+    def __init__(self) -> None:
+        self.add_calls: list[dict] = []
+
+    def add(self, ids=None, embeddings=None, documents=None, metadatas=None):
+        self.add_calls.append(
+            {
+                "ids": ids,
+                "embeddings": embeddings,
+                "documents": documents,
+                "metadatas": metadatas,
+            }
+        )
+
+
+class GoldenCollection:
+    """Stands in for ``store.collection`` (the LangChain ``Chroma`` handle).
+
+    Purely in-memory: the real ``vector_database/`` directory is never opened,
+    read or written, which is the addendum-C2 fix.
+    """
+
+    def __init__(self, embeddings: GoldenEmbeddings) -> None:
+        self._embeddings = embeddings
+        self._collection = GoldenRawCollection()
+        self.add_documents_calls: list[tuple] = []
+
+    def add_documents(self, documents, ids=None):
+        self.add_documents_calls.append((documents, ids))
+
+    def similarity_search_by_vector(self, embedding, k=None):
+        return _vector_hits(self._embeddings.last_query)
+
+
+def build_vector_store_fakes() -> tuple[GoldenCollection, GoldenEmbeddings]:
+    """The ``(collection, embeddings)`` pair ``store`` is monkeypatched with."""
+    embeddings = GoldenEmbeddings()
+    return GoldenCollection(embeddings), embeddings
 
 
 def build_llm_mock():
@@ -645,6 +800,30 @@ def build_llm_mock():
         return "Based on your emails, you have a meeting tomorrow at 10am."
 
     return mock_response
+
+
+#: The answer the fake OpenAI client gives ``process_with_openai``. Same value as
+#: ``tests/contract/test_mcp_http.py::FakeAsyncOpenAI``, so the two suites agree.
+OPENAI_ANSWER = "You have no deadlines in the next week."
+
+
+class GoldenAsyncOpenAI:
+    """Stands in for ``openai.AsyncOpenAI``. Never opens a socket.
+
+    Answers every ``chat.completions.create`` with a message that requests no
+    tools, which is ``process_with_openai``'s "LLM has a final answer" branch:
+    ``answer`` is the content and ``actions`` stays empty.
+    """
+
+    def __init__(self, api_key=None) -> None:
+        self.api_key = api_key
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create),
+        )
+
+    async def _create(self, **kwargs):
+        message = SimpleNamespace(content=OPENAI_ANSWER, tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 def build_oauth_flow_mock():
@@ -672,93 +851,202 @@ def build_oauth_flow_mock():
 # ============================================================================
 
 
+class GoldenLimiter:
+    """Always-allow ``RateLimiterClient`` stand-in.
+
+    ``check`` returns the same dict shape the real client returns, so the
+    ``result["allowed"]`` / ``result["limit"]`` / ``result["retry_after_seconds"]``
+    reads in every ``limiter.check`` block keep working (R8). Nothing reaches the
+    rate limiter on :8002.
+    """
+
+    def check(self, **kwargs) -> dict:
+        return dict(ALLOW_RESULT)
+
+
+@contextmanager
+def _overridden(app, overrides: dict):
+    """Install ``overrides`` into ``app.dependency_overrides`` and take them out
+    again, leaving any pre-existing entries alone."""
+    app.dependency_overrides.update(overrides)
+    try:
+        yield
+    finally:
+        for provider in overrides:
+            app.dependency_overrides.pop(provider, None)
+
+
+@contextmanager
+def _gateway_clients(clients: dict[str, httpx.AsyncClient]):
+    """Point the Gateway's three upstreams at in-process apps.
+
+    ``backend.gateway.proxy.set_client_factory`` is the contractual override
+    seam; it returns the previous factory, which is restored on the way out.
+    The proxy never closes what the factory hands it, and an ``ASGITransport``
+    owns no socket, so the clients simply go out of scope here.
+    """
+    previous = proxy.set_client_factory(clients.__getitem__)
+    try:
+        yield
+    finally:
+        proxy.set_client_factory(previous)
+
+
+def _asgi_client(base_url: str, target) -> AsyncServiceClient:
+    return AsyncServiceClient(base_url, transport=httpx.ASGITransport(app=target))
+
+
 @contextmanager
 def harness(app):
-    """Temp database + full mock set + ``TestClient`` for ``app``.
+    """The whole six-service stack, in one process, plus a ``TestClient`` for
+    ``app`` (the Gateway).
 
-    The real ``gmail_agent.db`` is never touched: ``backend.dependencies.db_manager``
-    is repointed at a throwaway SQLite file the same way
-    ``tests/conftest.py::test_db`` does it.
+    Nothing binds a socket: every hop is an ``httpx.ASGITransport``. Nothing
+    touches the real ``gmail_agent.db`` (the Database service is bound to a
+    throwaway temp file) or the real ``vector_database/`` directory (the Vector
+    DB service's Chroma handle and embedding model are in-memory fakes).
+
+    See the module docstring for the full mock inventory and why each patch
+    target is the one the services actually resolve.
     """
     tmp_dir = Path(tempfile.mkdtemp(prefix="golden-capture-"))
     db_path = tmp_dir / "golden.db"
-    test_engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    Base.metadata.create_all(bind=test_engine)
-    TestSessionLocal = sessionmaker(bind=test_engine)
 
-    original_engine = dependencies.db_manager.engine
-    original_session_local = dependencies.db_manager.SessionLocal
-    dependencies.db_manager.engine = test_engine
-    dependencies.db_manager.SessionLocal = TestSessionLocal
+    # The sanctioned R1 seam: a test fixture MAY construct a DatabaseManager to
+    # bind the Database service to a temp file. Production code may not.
+    manager = DatabaseManager(f"sqlite:///{db_path}")
 
     calendar_service, _events_store = build_calendar_service_mock()
 
     def fake_get_calendar_service(email_account_id=None):
-        # The controllers unpack a (service, error) tuple.
+        # Callers unpack a (service, error) tuple.
         return calendar_service, None
 
+    collection, embeddings = build_vector_store_fakes()
+    limiter = GoldenLimiter()
+
+    database_client = _asgi_client(DATABASE_BASE_URL, database_app)
+    vector_db_client = _asgi_client(VECTOR_DB_BASE_URL, vector_db_app)
+    accounts_client = _asgi_client(ACCOUNTS_BASE_URL, accounts_app)
+    user_data_client = _asgi_client(USER_DATA_BASE_URL, user_data_app)
+
     try:
-        seed_database(dependencies.db_manager)
+        seed_database(manager)
 
         with ExitStack() as stack:
+            # ---------------- service-to-service wiring ----------------
             stack.enter_context(
-                patch(
-                    "backend.controllers.emails.get_service",
+                _overridden(database_app, {get_db_manager: lambda: manager})
+            )
+            stack.enter_context(
+                _overridden(
+                    accounts_app,
+                    {accounts_clients.get_database_client: lambda: database_client},
+                )
+            )
+            stack.enter_context(
+                _overridden(
+                    user_data_app,
+                    {
+                        user_data_clients.get_database_client: lambda: database_client,
+                        user_data_clients.get_vector_db_client: lambda: vector_db_client,
+                        user_data_clients.get_accounts_client: lambda: accounts_client,
+                        user_data_clients.get_limiter: lambda: limiter,
+                    },
+                )
+            )
+            stack.enter_context(
+                _overridden(
+                    mcp_app,
+                    {
+                        mcp_clients.get_user_data_client: lambda: user_data_client,
+                        mcp_clients.get_accounts_client: lambda: accounts_client,
+                        mcp_clients.get_limiter: lambda: limiter,
+                    },
+                )
+            )
+            stack.enter_context(
+                _gateway_clients(
+                    {
+                        proxy.ACCOUNTS: httpx.AsyncClient(
+                            transport=httpx.ASGITransport(app=accounts_app),
+                            base_url=ACCOUNTS_BASE_URL,
+                        ),
+                        proxy.USER_DATA: httpx.AsyncClient(
+                            transport=httpx.ASGITransport(app=user_data_app),
+                            base_url=USER_DATA_BASE_URL,
+                        ),
+                        proxy.MCP: httpx.AsyncClient(
+                            transport=httpx.ASGITransport(app=mcp_app),
+                            base_url=MCP_BASE_URL,
+                        ),
+                    }
+                )
+            )
+
+            # ---------------- externals ----------------
+            # Gmail. ``sync`` and the internal email routers both reach it as
+            # ``gmail.get_service``, so this one binding covers them.
+            stack.enter_context(
+                patch.object(
+                    gmail,
+                    "get_service",
                     MagicMock(return_value=build_gmail_service_mock()),
                 )
             )
+            # The Go sync server on :8001.
             stack.enter_context(
                 patch(
-                    "backend.controllers.emails.requests.post",
+                    "backend.services.user_data.sync.requests.post",
                     side_effect=fake_go_sync_post,
                 )
             )
-            stack.enter_context(
-                patch("backend.controllers.emails.embed_and_store", AsyncMock())
-            )
-            stack.enter_context(
-                patch("backend.controllers.emails.store_in_vector_db", AsyncMock())
-            )
-            stack.enter_context(
-                patch(
-                    "backend.controllers.calendar.get_calendar_service",
-                    fake_get_calendar_service,
-                )
-            )
-            # The Moodle passthrough resolves get_calendar_service through its OWN
-            # module, where it would build a DatabaseManager against the REAL
-            # gmail_agent.db and possibly refresh/write a token.
-            stack.enter_context(
-                patch(
-                    "backend.services.moodle_calendar.get_calendar_service",
-                    fake_get_calendar_service,
-                )
-            )
-            stack.enter_context(
-                patch(
-                    "backend.controllers.llm.query_vector_db", build_vector_db_mock()
-                )
-            )
-            stack.enter_context(
-                patch("backend.controllers.llm.llm_response", build_llm_mock())
-            )
-            # flow.fetch_token() is a live POST to oauth2.googleapis.com.
-            stack.enter_context(
-                patch("backend.controllers.oauth.Flow", build_oauth_flow_mock())
-            )
+            # Google Calendar. ONE binding, unlike the monolith: the public
+            # calendar router, ``moodle.py`` and the CLI all resolve
+            # ``google_calendar.get_calendar_service`` as a module attribute
+            # (CONTRACT_FREEZE hazard 1, retired).
             stack.enter_context(
                 patch.object(
-                    dependencies.limiter,
-                    "check",
-                    MagicMock(return_value=dict(ALLOW_RESULT)),
+                    google_calendar, "get_calendar_service", fake_get_calendar_service
                 )
+            )
+            # Chroma + Ollama. Replaced wholesale so the real
+            # ``vector_database/`` directory is never opened (addendum C2).
+            stack.enter_context(patch.object(store, "collection", collection))
+            stack.enter_context(patch.object(store, "embeddings", embeddings))
+            # flow.fetch_token() is a live POST to oauth2.googleapis.com. Only
+            # the callback's binding is patched: ``GET /api/auth/google`` goes
+            # through ``google_oauth.authenticate_google_calendar``, which builds
+            # its URL offline from the real credentials.json and is asserted.
+            stack.enter_context(
+                patch.object(accounts_oauth, "Flow", build_oauth_flow_mock())
+            )
+            # OpenAI. ``.env`` holds a real key and ``ask_ollama`` calls
+            # ``load_dotenv()`` at import, so an unmocked path here bills money
+            # and yields a non-deterministic golden. ``process_with_openai``
+            # imports ``AsyncOpenAI`` at call time, so the module attribute on
+            # ``openai`` is the binding it resolves.
+            stack.enter_context(patch("openai.AsyncOpenAI", GoldenAsyncOpenAI))
+            # Belt and braces: even an unpatched client cannot authenticate.
+            stack.enter_context(
+                patch.dict(
+                    os.environ,
+                    {"OPENAI_API_KEY": "golden-capture-not-a-real-key"},
+                )
+            )
+            # ``/api/query``'s answer generator (itself an OpenAI call) and the
+            # Ollama branch of ``process_llm_query``, which imports
+            # ``slm_response`` at call time.
+            stack.enter_context(
+                patch.object(mcp_http_app, "llm_response", build_llm_mock())
+            )
+            stack.enter_context(
+                patch.object(mcp_ask_ollama, "slm_response", build_llm_mock())
             )
 
             with TestClient(app) as client:
                 yield client
     finally:
-        dependencies.db_manager.engine = original_engine
-        dependencies.db_manager.SessionLocal = original_session_local
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

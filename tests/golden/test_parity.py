@@ -21,7 +21,7 @@ from .capture import REQUESTS, golden_path, load_app, normalize, replay
 pytestmark = pytest.mark.golden
 
 # WAVE 6: repoint here
-TARGET_APP_IMPORT = "backend.app:app"
+TARGET_APP_IMPORT = "backend.gateway.app:app"
 
 
 @pytest.fixture(scope="module")

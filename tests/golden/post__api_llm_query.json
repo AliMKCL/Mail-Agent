@@ -1,6 +1,9 @@
 {
   "body": {
-    "detail": "Error processing LLM query: process_llm_query() got an unexpected keyword argument 'user_id'"
+    "actions": [],
+    "answer": "You have no deadlines in the next week.",
+    "note": null,
+    "status": "success"
   },
   "content_type": "application/json",
   "ratelimit_headers": {},
@@ -14,5 +17,5 @@
     "params": null,
     "path": "/api/llm-query"
   },
-  "status": 500
+  "status": 200
 }
