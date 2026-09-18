@@ -29,23 +29,23 @@ directory.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest import mock
 
 import httpx
 import pytest
 
-# The monolith's ``llm_integration`` is imported for exactly one purpose: the
-# TOOLS_MANIFEST byte-identity check below. It pulls in ``backend.mcp_server``,
-# which transitively builds a Chroma client and an embedding model at module
-# import time (addendum C2), so both constructors are patched for the duration
-# of the import. Verified: neither ``gmail_agent.db`` nor
-# ``vector_database/chroma.sqlite3`` changes md5 as a result of this import.
-with mock.patch("langchain_chroma.Chroma"), mock.patch(
-    "langchain_ollama.OllamaEmbeddings"
-):
-    from backend.llm_integration import TOOLS_MANIFEST as MONOLITH_TOOLS_MANIFEST
+# The pre-refactor ``backend/llm_integration.py`` no longer exists (Wave 7
+# deleted the monolith), so the manifest it declared is kept as a JSON snapshot
+# captured FROM that module while it was still present. The snapshot therefore
+# records the pre-refactor value rather than whatever the new code produces.
+MONOLITH_TOOLS_MANIFEST = json.loads(
+    (Path(__file__).resolve().parent / "tools_manifest_monolith.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 from backend.services.mcp import http_app as http_app_module
 from backend.services.mcp import llm_integration
@@ -571,8 +571,10 @@ async def test_both_endpoints_share_the_server_total_bucket(
 
 def test_tools_manifest_is_byte_identical_to_the_monolith():
     """The manifest is the OpenAI function-calling schema: a whitespace or
-    description edit changes tool selection. Compared against the original
-    module rather than a hand-copied snapshot."""
+    description edit changes tool selection. Compared against
+    ``tools_manifest_monolith.json``, which was generated from the original
+    ``backend.llm_integration`` module before Wave 7 deleted it, so this stays a
+    pre-refactor reference value and not a hand-copied one."""
     assert llm_integration.TOOLS_MANIFEST == MONOLITH_TOOLS_MANIFEST
 
 

@@ -1,0 +1,353 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "list_accounts",
+      "description": "List all registered accounts (logged-in users) in the system",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_email_accounts",
+      "description": "List all email accounts (Gmail/Outlook accounts) in the system. Can optionally filter by account_id.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "description": "Optional account ID to filter email accounts"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_account_info",
+      "description": "Get detailed information about a specific account (logged-in user) by their ID",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "description": "The ID of the account to retrieve"
+          }
+        },
+        "required": [
+          "account_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_email_account_info",
+      "description": "Get detailed information about a specific email account (Gmail/Outlook) by its ID",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email_account_id": {
+            "type": "integer",
+            "description": "The ID of the email account to retrieve"
+          }
+        },
+        "required": [
+          "email_account_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_emails",
+      "description": "Search emails using Gmail query syntax or semantic search. Use semantic=True for natural language queries.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query (Gmail syntax or natural language)"
+          },
+          "email_account_id": {
+            "type": "integer",
+            "description": "Optional email account ID to filter emails"
+          },
+          "use_semantic": {
+            "type": "boolean",
+            "description": "Use vector database semantic search",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results to return",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "sync_emails",
+      "description": "Fetch new emails from Gmail for a specific email account and store them",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email_account_id": {
+            "type": "integer",
+            "description": "The ID of the email account whose emails to sync"
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum emails to fetch",
+            "default": 50
+          }
+        },
+        "required": [
+          "email_account_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_email_details",
+      "description": "Get full details of a specific email by its message ID",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "description": "The Gmail message ID"
+          }
+        },
+        "required": [
+          "message_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_email_account_emails",
+      "description": "Get cached emails for a specific email account from the database",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email_account_id": {
+            "type": "integer",
+            "description": "The email account ID"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum emails to return",
+            "default": 50
+          }
+        },
+        "required": [
+          "email_account_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_calendar_event",
+      "description": "Create a new calendar event. Always uses the main calendar (email account ID 1). IMPORTANT: Always provide the date in YYYY-MM-DD format with the full year. Use the current date context provided in the system message to infer the correct year.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Event title"
+          },
+          "date": {
+            "type": "string",
+            "description": "Event date in YYYY-MM-DD format. MUST include the full year (e.g., 2025-12-05, not 12-05). Use date context to infer the year if not specified by user."
+          },
+          "time": {
+            "type": "string",
+            "description": "Event time in HH:MM AM/PM format or 'All Day'",
+            "default": "All Day"
+          },
+          "description": {
+            "type": "string",
+            "description": "Event description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "Academic",
+              "Career",
+              "Social",
+              "Deadline"
+            ],
+            "description": "Event category"
+          }
+        },
+        "required": [
+          "title",
+          "date"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "update_calendar_event",
+      "description": "Update an existing calendar event. When updating the date, always use YYYY-MM-DD format with the full year.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "Calendar event ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "New title"
+          },
+          "date": {
+            "type": "string",
+            "description": "New date in YYYY-MM-DD format. MUST include the full year (e.g., 2025-12-05)."
+          },
+          "time": {
+            "type": "string",
+            "description": "New time"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "category": {
+            "type": "string",
+            "description": "New category"
+          }
+        },
+        "required": [
+          "event_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_calendar_event",
+      "description": "Delete a calendar event",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "Calendar event ID to delete"
+          }
+        },
+        "required": [
+          "event_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_calendar_events",
+      "description": "Get calendar events for a date range from all calendars (primary + Moodle). If no dates provided, returns current month.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "start_date": {
+            "type": "string",
+            "description": "Start date in YYYY-MM-DD format"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "End date in YYYY-MM-DD format"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "extract_dates_from_emails",
+      "description": "Extract deadlines and important dates from recent emails using AI. Can optionally auto-create calendar events.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email_account_id": {
+            "type": "integer",
+            "description": "Email account ID whose emails to analyze"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Number of recent emails to analyze",
+            "default": 20
+          },
+          "auto_create_events": {
+            "type": "boolean",
+            "description": "Automatically create calendar events",
+            "default": false
+          }
+        },
+        "required": [
+          "email_account_id"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "summarize_emails",
+      "description": "Generate AI summary of emails matching criteria",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Filter criteria",
+            "default": "unread"
+          },
+          "email_account_id": {
+            "type": "integer",
+            "description": "Optional email account ID to filter emails"
+          },
+          "summary_type": {
+            "type": "string",
+            "enum": [
+              "brief",
+              "detailed",
+              "bullet_points"
+            ],
+            "description": "Type of summary",
+            "default": "brief"
+          }
+        },
+        "required": []
+      }
+    }
+  }
+]

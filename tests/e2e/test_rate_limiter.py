@@ -8,12 +8,14 @@ Updated for new database schema:
 - Account: The logged-in user (account_id from accounts table)
 - EmailAccount: A connected Gmail/Outlook account (email_account_id from email_accounts table)
 
-Prerequisites:
-- FastAPI server running on http://localhost:8000
-- Rate limiter service running on http://localhost:8002
+Prerequisites (LIVE PROCESSES — this is the one suite that is not in-process):
+- Gateway running on http://localhost:8000 (the public entry all requests below hit)
+- The five backend services it proxies to: Accounts :8010, User_data :8020,
+  Database :8030, Vector DB :8040, MCP :8050
+- Go rate limiter service running on http://localhost:8002
 - Database with at least one account and email_account (account_id=1, email_account_id=1)
 
-Run: pytest tests/test_rate_limiter2.py -v
+Run: pytest tests/e2e/test_rate_limiter.py -v
 """
 
 import pytest
@@ -23,6 +25,9 @@ from typing import Dict, Any
 
 # Import the updated rate limiter client
 from ratelimiter.client.ratelimiter_client import RateLimiterClient
+
+# Live-HTTP suite: deselected by default via `-m "not e2e"` (pytest.ini markers).
+pytestmark = pytest.mark.e2e
 
 # Base URLs
 API_BASE_URL = "http://localhost:8000"
