@@ -42,6 +42,11 @@ SCOPES = [
 OAUTH_HOST = "localhost"
 OAUTH_PORT = 8080  # ensure http://localhost:8080/ is registered in the OAuth client
 
+# Per-call timeout for the interactive credential fetch (hazard B7). This is the
+# one inter-service call that can block on a human completing Google's OAuth
+# consent screen, so it must not inherit http.DEFAULT_TIMEOUT (30 s).
+INTERACTIVE_OAUTH_TIMEOUT: float = 1800.0
+
 
 def get_service(email_account_id: int):
     """
@@ -57,10 +62,15 @@ def get_service(email_account_id: int):
     # 1) Ask the sole credential authority (R2) to resolve usable credentials.
     #    allow_interactive=true is the Gmail rung of the ladder: on refresh
     #    failure or missing credentials, Accounts re-authenticates.
+    #    Hazard B7: unlike every other inter-service call, this one may block on a
+    #    human at a browser consent screen, so the 30 s DEFAULT_TIMEOUT would sever
+    #    the flow. The monolith's gmail_read.get_service blocked indefinitely here.
+    #    1800 s comfortably exceeds the Gateway's 1200 s /api/sync allowance.
     try:
         response = accounts.get(
             f"/internal/email-accounts/{email_account_id}/credentials",
             params={"allow_interactive": "true"},
+            timeout=INTERACTIVE_OAUTH_TIMEOUT,
         )
     except UpstreamError as error:
         # 409 carries the same message the monolith raised from gmail_read.py:89,

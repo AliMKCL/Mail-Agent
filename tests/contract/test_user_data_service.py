@@ -1252,3 +1252,43 @@ def test_get_calendar_service_builds_and_saves_credentials(monkeypatch):
     assert puts[0][0] == "/internal/email-accounts/7/credentials"
     assert puts[0][1]["token"] == "access-token"
     assert puts[0][1]["refresh_token"] == "refresh-token"
+
+
+def test_get_service_uses_long_timeout_for_interactive_oauth(monkeypatch):
+    """B7 regression: the interactive credential fetch must not inherit the 30 s default.
+
+    ``allow_interactive=true`` lets Accounts run a full browser consent flow, which
+    blocks on a human. Inheriting ``http.DEFAULT_TIMEOUT`` severed ``/api/sync`` at
+    exactly 30 s with ``{"detail": "Error syncing emails: timed out"}``.
+    """
+    from backend.libs.common.http import DEFAULT_TIMEOUT
+
+    creds_payload = {
+        "token": "access-token",
+        "refresh_token": "refresh-token",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": "client-id",
+        "client_secret": "client-secret",
+        "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
+        "expiry": datetime(2030, 1, 1, 0, 0, 0).isoformat(),
+    }
+    not_passed = object()
+    calls: list[Any] = []
+
+    class Stub:
+        def get(self, path, *, params=None, timeout=not_passed):
+            calls.append((params, timeout))
+            return httpx.Response(200, json=creds_payload)
+
+    monkeypatch.setattr(gmail, "get_accounts_sync_client", lambda: Stub())
+    monkeypatch.setattr(
+        gmail, "build", lambda name, version, credentials=None: "gmail-service"
+    )
+
+    assert gmail.get_service(7) == "gmail-service"
+
+    params, timeout = calls[0]
+    assert params == {"allow_interactive": "true"}
+    assert timeout is not not_passed, "interactive fetch must pass an explicit timeout"
+    assert timeout != DEFAULT_TIMEOUT
+    assert timeout is None or timeout > 1200.0
