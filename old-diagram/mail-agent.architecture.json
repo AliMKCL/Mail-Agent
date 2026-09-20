@@ -1,0 +1,500 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mail Agent Runtime Architecture",
+    "output": "mail-agent-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/AliMKCL/Mail-Agent",
+      "provider": "github",
+      "revision": "06288dd4b54a5a9885acaecb96ffa93ad14d4577"
+    },
+    "views": [
+      {
+        "id": "ai-query-path",
+        "label": "AI query path",
+        "focus": [
+          "browser",
+          "gateway",
+          "mcp",
+          "user_data",
+          "vector_db",
+          "ollama",
+          "openai"
+        ],
+        "note": "Follow a natural-language query from the browser to the generated answer."
+      },
+      {
+        "id": "login-sync-review",
+        "label": "Login, sync (opt) & review",
+        "focus": [
+          "browser",
+          "gateway",
+          "accounts",
+          "user_data",
+          "google_apis",
+          "database",
+          "vector_db",
+          "ollama"
+        ],
+        "note": "1. Sign in via Accounts & DB -> 2. (Opt) Sync Gmail -> 3. Embed text via Vector DB & Ollama -> 4. Store in SQLite & review cached mail."
+      },
+      {
+        "id": "sync-mail",
+        "label": "Sync & embed mail",
+        "focus": [
+          "browser",
+          "gateway",
+          "accounts",
+          "user_data",
+          "google_apis",
+          "database",
+          "vector_db",
+          "ollama"
+        ],
+        "note": "Browser clicks Sync -> User_data gets tokens from Accounts, fetches Gmail, stores in DB, and embeds in Vector DB via Ollama."
+      },
+      {
+        "id": "view-mail",
+        "label": "Review cached mail",
+        "focus": [
+          "browser",
+          "gateway",
+          "user_data",
+          "database"
+        ],
+        "note": "Browser requests mail -> Gateway proxies to User_data -> User_data reads cached emails from SQLite Database."
+      },
+      {
+        "id": "python-services",
+        "label": "Python services",
+        "focus": [
+          "gateway",
+          "accounts",
+          "user_data",
+          "database",
+          "vector_db",
+          "mcp"
+        ],
+        "note": "Six FastAPI services, each the sole owner of exactly one resource."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Web Browser",
+      "sublabel": "Frontend SPA",
+      "pos": [
+        40,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "Gateway",
+      "sublabel": ":8000 · public entry",
+      "tag": "binds 0.0.0.0",
+      "pos": [
+        250,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/gateway/app.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP",
+      "sublabel": ":8050 + stdio",
+      "tag": "sole LLM caller",
+      "pos": [
+        460,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/services/mcp/mcp_server.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "user_data",
+      "type": "backend",
+      "label": "User_data",
+      "sublabel": ":8020 · mail & calendar",
+      "pos": [
+        670,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/services/user_data/app.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "vector_db",
+      "type": "database",
+      "label": "Vector DB",
+      "sublabel": ":8040 · Chroma store",
+      "pos": [
+        880,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/services/vector_db/app.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "accounts",
+      "type": "backend",
+      "label": "Accounts",
+      "sublabel": ":8010 · credentials",
+      "pos": [
+        250,
+        230
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/services/accounts/app.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "database",
+      "type": "database",
+      "label": "Database",
+      "sublabel": ":8030 · SQLite store",
+      "pos": [
+        1090,
+        230
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/services/database/manager.py",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "ratelimiter",
+      "type": "backend",
+      "label": "Go Rate Limiter",
+      "sublabel": ":8002 · token bucket",
+      "tag": "fails open",
+      "pos": [
+        40,
+        420
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "ratelimiter/limiter.go",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "go_sync",
+      "type": "backend",
+      "label": "Go Email Sync",
+      "sublabel": ":8001 · ingestion",
+      "pos": [
+        250,
+        420
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "openai",
+      "type": "external",
+      "label": "OpenAI API",
+      "sublabel": "chat completions",
+      "pos": [
+        460,
+        420
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "google_apis",
+      "type": "external",
+      "label": "Google APIs",
+      "sublabel": "Gmail + Calendar",
+      "pos": [
+        670,
+        420
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "ollama",
+      "type": "external",
+      "label": "Ollama",
+      "sublabel": ":11434 · embeddings",
+      "pos": [
+        880,
+        420
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Python FastAPI services",
+      "wraps": [
+        "gateway",
+        "mcp",
+        "user_data",
+        "vector_db",
+        "accounts",
+        "database"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "Go microservices (optional)",
+      "wraps": [
+        "ratelimiter",
+        "go_sync"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "External AI & Google APIs",
+      "wraps": [
+        "ollama",
+        "openai",
+        "google_apis"
+      ],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-gateway",
+      "from": "browser",
+      "to": "gateway",
+      "label": "1 · query",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-mcp",
+      "from": "gateway",
+      "to": "mcp",
+      "label": "2 · proxy query",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "mcp-userdata",
+      "from": "mcp",
+      "to": "user_data",
+      "label": "3 · retrieve context",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "userdata-vectordb",
+      "from": "user_data",
+      "to": "vector_db",
+      "label": "4 · vector search / embed",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "id": "vectordb-ollama",
+      "from": "vector_db",
+      "to": "ollama",
+      "label": "5 · embed query / emails",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "mcp-openai",
+      "from": "mcp",
+      "to": "openai",
+      "label": "6 · generate answer",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "gateway-accounts-login",
+      "from": "gateway",
+      "to": "accounts",
+      "label": "1a · sign in",
+      "variant": "default",
+      "labelDy": 24
+    },
+    {
+      "id": "accounts-database",
+      "from": "accounts",
+      "to": "database",
+      "label": "1b · verify credentials & tokens",
+      "variant": "default",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          220,
+          262
+        ],
+        [
+          220,
+          520
+        ],
+        [
+          1165,
+          520
+        ]
+      ],
+      "labelDy": -16
+    },
+    {
+      "id": "gateway-userdata-proxy",
+      "from": "gateway",
+      "to": "user_data",
+      "label": "2 · sync (opt) / review",
+      "variant": "default",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          325,
+          60
+        ],
+        [
+          745,
+          60
+        ]
+      ],
+      "labelDy": -16
+    },
+    {
+      "id": "userdata-google-sync",
+      "from": "user_data",
+      "to": "google_apis",
+      "label": "3 · fetch Gmail (sync)",
+      "variant": "default",
+      "labelDy": 24
+    },
+    {
+      "id": "userdata-database",
+      "from": "user_data",
+      "to": "database",
+      "label": "5 · store in DB / review cache",
+      "variant": "default",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          745,
+          40
+        ],
+        [
+          1165,
+          40
+        ]
+      ],
+      "labelDy": -16
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Gateway & Accounts (Login)",
+      "items": [
+        "Gateway (:8000) is the sole public entry point (binds 0.0.0.0)",
+        "Accounts (:8010) authenticates users and verifies credentials/tokens against Database"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "User_data & Sync Pipeline (Optional)",
+      "items": [
+        "Sync button triggers User_data (:8020) to resolve tokens via Accounts & fetch from Gmail",
+        "Cleans messages and coordinates storage across Database (:8030) and Vector DB (:8040)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Database & Vector DB Storage",
+      "items": [
+        "Database (:8030) owns gmail_agent.db (SQLite) for email caching and user records",
+        "Vector DB (:8040) embeds via Ollama (:11434) and manages Chroma semantic vectors"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "MCP & AI Query Orchestration",
+      "items": [
+        "MCP (:8050) orchestrates 14 tools & 9 resources; sole caller of OpenAI chat completions",
+        "Rate Limiter (:8002) fails open; optional Go Sync (:8001) enables high-throughput ingestion"
+      ]
+    }
+  ]
+}

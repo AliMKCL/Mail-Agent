@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mail Agent - Runtime Microservice Architecture",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-system",
+        "label": "Full System Topology",
+        "focus": ["browser", "gateway", "accounts", "user_data", "mcp", "database_svc", "vector_db_svc", "go_sync", "rate_limiter", "sqlite_db", "chroma_db", "google_api", "ollama", "openai"],
+        "note": "Complete hybrid Python-Go microservices mesh showing single-writer ownership, storage boundaries, and AI integrations."
+      },
+      {
+        "id": "path-sync-emails",
+        "label": "Path 1: Login, Sync & Check",
+        "focus": ["browser", "gateway", "accounts", "user_data", "go_sync", "rate_limiter", "database_svc", "vector_db_svc", "sqlite_db", "chroma_db", "google_api", "ollama"],
+        "note": "Authenticate via Accounts, sync Gmail concurrently via Go, save to SQLite, embed in ChromaDB, and query cached inbox."
+      },
+      {
+        "id": "path-mcp-qa",
+        "label": "Path 2: Login & MCP AI Q&A",
+        "focus": ["browser", "gateway", "accounts", "mcp", "user_data", "rate_limiter", "vector_db_svc", "database_svc", "sqlite_db", "chroma_db", "ollama", "openai"],
+        "note": "Authenticate, query MCP, verify rate limits, retrieve ChromaDB vectors, hydrate SQLite bodies, and answer via LLM."
+      },
+      {
+        "id": "data-ownership",
+        "label": "Data Ownership & Isolation",
+        "focus": ["gateway", "accounts", "user_data", "database_svc", "vector_db_svc", "sqlite_db", "chroma_db"],
+        "note": "Strict single-writer pattern: Database service is sole Python owner of SQLite; Accounts owns tokens; Vector DB owns Chroma store."
+      }
+    ]
+  },
+  "components": [
+    { "id": "browser", "type": "frontend", "label": "Web Browser SPA", "sublabel": "Glassmorphic UI", "pos": [40, 190], "size": [130, 44] },
+    { "id": "gateway", "type": "backend", "label": "API Gateway", "sublabel": "FastAPI :8000", "brand": "fastapi", "pos": [230, 190], "size": [130, 44] },
+    { "id": "accounts", "type": "security", "label": "Accounts Service", "sublabel": "OAuth :8010", "brand": "fastapi", "pos": [440, 50], "size": [140, 44] },
+    { "id": "user_data", "type": "backend", "label": "User Data Service", "sublabel": "Emails :8020", "brand": "fastapi", "pos": [440, 190], "size": [140, 44] },
+    { "id": "mcp", "type": "backend", "label": "MCP Service", "sublabel": "AI Tools :8050", "brand": "fastapi", "pos": [440, 270], "size": [140, 44] },
+    { "id": "openai", "type": "external", "label": "OpenAI API", "sublabel": "gpt-4o-mini", "brand": "openai", "pos": [440, 350], "size": [140, 44] },
+    { "id": "rate_limiter", "type": "security", "label": "Go Rate Limiter", "sublabel": "Bucket :8002", "brand": "go", "pos": [670, 120], "size": [130, 44] },
+    { "id": "go_sync", "type": "backend", "label": "Go Sync Service", "sublabel": "Worker :8001", "brand": "go", "pos": [670, 190], "size": [130, 44] },
+    { "id": "vector_db_svc", "type": "backend", "label": "Vector DB Service", "sublabel": "Chroma :8040", "brand": "fastapi", "pos": [670, 270], "size": [130, 44] },
+    { "id": "database_svc", "type": "backend", "label": "Database Service", "sublabel": "SQLite :8030", "brand": "fastapi", "pos": [670, 350], "size": [130, 44] },
+    { "id": "google_api", "type": "external", "label": "Google Cloud APIs", "sublabel": "Gmail & Calendar", "brand": "google-cloud", "pos": [890, 50], "size": [140, 44] },
+    { "id": "ollama", "type": "external", "label": "Ollama Local AI", "sublabel": "SLM & Embed :11434", "brand": "ollama", "pos": [890, 190], "size": [140, 44] },
+    { "id": "chroma_db", "type": "database", "label": "ChromaDB", "sublabel": "vector_database/", "pos": [890, 270], "size": [130, 44] },
+    { "id": "sqlite_db", "type": "database", "label": "SQLite DB", "sublabel": "gmail_agent.db", "brand": "sqlite", "pos": [890, 350], "size": [130, 44] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Python Mesh (127.0.0.1)", "wraps": ["gateway", "accounts", "user_data", "mcp", "openai"] },
+    { "kind": "region", "label": "Go Services", "wraps": ["rate_limiter", "go_sync"] },
+    { "kind": "region", "label": "Storage Services & DBs", "wraps": ["vector_db_svc", "database_svc", "sqlite_db", "chroma_db"] },
+    { "kind": "region", "label": "Cloud & Local AI", "wraps": ["google_api", "ollama"] }
+  ],
+  "connections": [
+    { "id": "browser-gateway", "from": "browser", "to": "gateway", "label": "HTTPS :8000", "variant": "emphasis" },
+    { "id": "gateway-accounts", "from": "gateway", "to": "accounts", "label": "Auth :8010", "fromSide": "top", "toSide": "left" },
+    { "id": "gateway-user-data", "from": "gateway", "to": "user_data", "label": "REST :8020" },
+    { "id": "gateway-mcp", "from": "gateway", "to": "mcp", "label": "Query :8050", "fromSide": "bottom", "toSide": "left" },
+    { "id": "accounts-google", "from": "accounts", "to": "google_api", "label": "OAuth 2.0" },
+    { "id": "user-data-accounts", "from": "user_data", "to": "accounts", "label": "Credentials", "fromSide": "top", "toSide": "bottom", "labelDy": -28 },
+    { "id": "user-data-limiter", "from": "user_data", "to": "rate_limiter", "label": "Rate Check", "fromSide": "top", "toSide": "left" },
+    { "id": "user-data-sync", "from": "user_data", "to": "go_sync", "label": "Sync Dispatch", "variant": "emphasis" },
+    { "id": "user-data-vector", "from": "user_data", "to": "vector_db_svc", "label": "Store Vectors", "labelDy": -10 },
+    { "id": "user-data-db", "from": "user_data", "to": "database_svc", "label": "Cache Reads", "fromSide": "bottom", "toSide": "left", "labelDy": 10 },
+    { "id": "mcp-user-data", "from": "mcp", "to": "user_data", "label": "Semantic Search", "fromSide": "top", "toSide": "bottom", "labelDx": -40 },
+    { "id": "mcp-openai", "from": "mcp", "to": "openai", "label": "Cloud LLM", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "go-ollama", "from": "go_sync", "to": "ollama", "label": "Batch Embed" },
+    { "id": "vector-chroma", "from": "vector_db_svc", "to": "chroma_db", "label": "Chroma Store" },
+    { "id": "db-sqlite", "from": "database_svc", "to": "sqlite_db", "label": "SQLAlchemy" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Path 1: Login, Sync & Check Emails",
+      "items": [
+        "Login & Sync: Browser -> Gateway (:8000) -> Accounts (:8010) checks SQLite credentials via Database (:8030); User_data (:8020) checks Go Limiter (:8002)",
+        "Ingestion & Read: User_data -> Go Sync (:8001) fetches Gmail, writes SQLite & batch-embeds via Ollama (:11434); Vector DB (:8040) stores Chroma; Database serves inbox"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Path 2: Login & MCP Email Q&A",
+      "items": [
+        "Query & Retrieval: Browser -> Gateway (:8000) -> MCP (:8050) -> User_data (:8020) -> Vector DB (:8040) embeds query via Ollama & searches ChromaDB",
+        "Context & Synthesis: User_data fetches email bodies from Database (:8030) -> SQLite; MCP synthesizes grounded answer via Ollama / OpenAI tools"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Single-Writer Architecture & Resilience",
+      "items": [
+        "Single-Writer: Database (:8030) sole owner of SQLite; Accounts (:8010) owns tokens; Vector DB (:8040) owns Chroma store",
+        "Mesh Security: Only Gateway binds 0.0.0.0; 5 backend services bind 127.0.0.1; Go Sync has Python fallback; Go Rate Limiter fails open"
+      ]
+    }
+  ]
+}

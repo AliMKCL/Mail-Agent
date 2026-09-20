@@ -7,8 +7,8 @@
   "visualReview": "pending",
   "artifact": {
     "path": "/Users/alimuratkeceli/Desktop/Projects/Python/Mail-Agent/architecture-diagram/mail-agent-architecture.html",
-    "sha256": "37de7ffa47eb893085acdd383fcfd327d7bc80580f30d0648038cb7bba247260",
-    "bytes": 815996
+    "sha256": "731a58012fd552b47b5687441d1344fa4aa293df9797f30c1dd4885db08dd11b",
+    "bytes": 820561
   },
   "state": {
     "detail": "read",
@@ -95,8 +95,8 @@
         "overflowX": false,
         "overflowY": false,
         "ok": true,
-        "readerWidth": 1480,
-        "diagramWidth": 1450,
+        "readerWidth": 1403,
+        "diagramWidth": 1373,
         "viewBoxWidth": 1302,
         "minimumProjectedNodeTextPx": 9,
         "minimumProjectedNodeText": "Frontend SPA",
@@ -225,8 +225,8 @@
         "overflowX": false,
         "overflowY": false,
         "ok": true,
-        "readerWidth": 1480,
-        "diagramWidth": 1450,
+        "readerWidth": 1403,
+        "diagramWidth": 1373,
         "viewBoxWidth": 1302,
         "minimumProjectedNodeTextPx": 9,
         "minimumProjectedNodeText": "Frontend SPA",
@@ -354,8 +354,8 @@
         "overflowX": false,
         "overflowY": false,
         "ok": true,
-        "readerWidth": 1480,
-        "diagramWidth": 1450,
+        "readerWidth": 1403,
+        "diagramWidth": 1373,
         "viewBoxWidth": 1302,
         "minimumProjectedNodeTextPx": 9,
         "minimumProjectedNodeText": "Frontend SPA",
