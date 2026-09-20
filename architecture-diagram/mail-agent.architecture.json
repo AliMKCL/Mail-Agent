@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mail Agent Runtime Architecture",
+    "output": "mail-agent-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/AliMKCL/Mail-Agent",
+      "provider": "github",
+      "revision": "06288dd4b54a5a9885acaecb96ffa93ad14d4577"
+    },
+    "views": [
+      { "id": "ai-query-path", "label": "AI query path", "focus": ["browser", "gateway", "mcp", "user_data", "vector_db", "ollama", "openai"], "note": "Follow a natural-language query from the browser to the generated answer." },
+      { "id": "python-services", "label": "Python services", "focus": ["gateway", "accounts", "user_data", "database", "vector_db", "mcp"], "note": "Six FastAPI services, each the sole owner of exactly one resource." },
+      { "id": "go-microservices", "label": "Go microservices", "focus": ["ratelimiter", "go_sync"], "note": "Optional, standalone Go services decoupled from domain logic." }
+    ]
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "Web Browser", "sublabel": "Frontend SPA", "pos": [40, 100], "size": [150, 64] },
+    { "id": "gateway", "type": "backend", "label": "Gateway", "sublabel": ":8000 · public entry", "tag": "binds 0.0.0.0", "pos": [250, 100], "size": [150, 64], "sources": [{ "path": "backend/gateway/app.py", "line": 1 }] },
+    { "id": "mcp", "type": "backend", "label": "MCP", "sublabel": ":8050 + stdio", "tag": "sole LLM caller", "pos": [460, 100], "size": [150, 64], "sources": [{ "path": "backend/services/mcp/mcp_server.py", "line": 1 }] },
+    { "id": "user_data", "type": "backend", "label": "User_data", "sublabel": ":8020 · mail & calendar", "pos": [670, 100], "size": [150, 64], "sources": [{ "path": "backend/services/user_data/app.py", "line": 1 }] },
+    { "id": "vector_db", "type": "database", "label": "Vector DB", "sublabel": ":8040 · Chroma store", "pos": [880, 100], "size": [150, 64], "sources": [{ "path": "backend/services/vector_db/app.py", "line": 1 }] },
+
+    { "id": "accounts", "type": "backend", "label": "Accounts", "sublabel": ":8010 · credentials", "pos": [250, 230], "size": [150, 64], "sources": [{ "path": "backend/services/accounts/app.py", "line": 1 }] },
+    { "id": "database", "type": "database", "label": "Database", "sublabel": ":8030 · SQLite store", "pos": [1090, 230], "size": [150, 64], "sources": [{ "path": "backend/services/database/manager.py", "line": 1 }] },
+
+    { "id": "ratelimiter", "type": "backend", "label": "Go Rate Limiter", "sublabel": ":8002 · token bucket", "tag": "fails open", "pos": [40, 420], "size": [150, 64], "sources": [{ "path": "ratelimiter/limiter.go", "line": 1 }] },
+    { "id": "go_sync", "type": "backend", "label": "Go Email Sync", "sublabel": ":8001 · ingestion", "pos": [250, 420], "size": [150, 64] },
+
+    { "id": "openai", "type": "external", "label": "OpenAI API", "sublabel": "chat completions", "pos": [460, 420], "size": [150, 64] },
+    { "id": "google_apis", "type": "external", "label": "Google APIs", "sublabel": "Gmail + Calendar", "pos": [670, 420], "size": [150, 64] },
+    { "id": "ollama", "type": "external", "label": "Ollama", "sublabel": ":11434 · embeddings", "pos": [880, 420], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Python FastAPI services", "wraps": ["gateway", "mcp", "user_data", "vector_db", "accounts", "database"], "pad": 22 },
+    { "kind": "region", "label": "Go microservices (optional)", "wraps": ["ratelimiter", "go_sync"], "pad": 16 },
+    { "kind": "region", "label": "External AI & Google APIs", "wraps": ["ollama", "openai", "google_apis"], "pad": 16 }
+  ],
+  "connections": [
+    { "id": "browser-gateway", "from": "browser", "to": "gateway", "label": "1 · query", "variant": "emphasis" },
+    { "id": "gateway-mcp", "from": "gateway", "to": "mcp", "label": "2 · proxy", "variant": "emphasis" },
+    { "id": "mcp-userdata", "from": "mcp", "to": "user_data", "label": "3 · retrieve context", "variant": "emphasis", "labelDy": -26 },
+    { "id": "userdata-vectordb", "from": "user_data", "to": "vector_db", "label": "4 · vector search", "variant": "emphasis", "labelDy": -26 },
+    { "id": "vectordb-ollama", "from": "vector_db", "to": "ollama", "label": "5 · embed query", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "mcp-openai", "from": "mcp", "to": "openai", "label": "6 · generate answer", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelDy": 24 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Gateway — only public entry", "items": [
+      "Binds 0.0.0.0; backends bind 127.0.0.1 loopback-only",
+      "No business logic or rate limits; /internal/* never proxied"
+    ]},
+    { "dot": "emerald", "title": "Accounts & data services", "items": [
+      "Accounts (:8010): sole credential/OAuth authority",
+      "Database (:8030) owns gmail_agent.db; Vector DB (:8040) owns Chroma and embeds queries via Ollama"
+    ]},
+    { "dot": "amber", "title": "MCP — AI orchestration", "items": [
+      "14 tools, 9 resources; sole caller of OpenAI (gpt-5-mini for /api/query, gpt-4o-mini for the /api/llm-query tool loop)",
+      "Also calls Accounts/User_data directly for other tools"
+    ]},
+    { "dot": "rose", "title": "Go microservices & design rules", "items": [
+      "Rate Limiter (:8002) fails open; only MCP and User_data consult it, never the Gateway",
+      "Acyclic graph; startup order: Database → Accounts+VectorDB → User_data → MCP → Gateway"
+    ]}
+  ]
+}

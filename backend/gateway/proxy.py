@@ -27,7 +27,8 @@ lifespan closes them via :func:`close_clients`.
 
 from __future__ import annotations
 
-from typing import Callable, NamedTuple
+from collections.abc import Callable
+from typing import NamedTuple
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -205,9 +206,9 @@ async def forward(request: Request, upstream: str, timeout: float) -> Response:
 # Route table (Spec 3.1 ownership x Spec 3.7 timeouts)
 # --------------------------------------------------------------------------
 
-ACCOUNTS_TIMEOUT = 120.0    # interactive OAuth re-auth can block the process (B7)
+ACCOUNTS_TIMEOUT = 120.0  # interactive OAuth re-auth can block the process (B7)
 USER_DATA_TIMEOUT = 60.0
-SYNC_TIMEOUT = 1200.0       # /api/sync calls the Go server with timeout=1000 (B5)
+SYNC_TIMEOUT = 1200.0  # /api/sync calls the Go server with timeout=1000 (B5)
 QUERY_TIMEOUT = 300.0
 LLM_QUERY_TIMEOUT = 600.0
 
