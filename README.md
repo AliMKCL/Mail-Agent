@@ -432,6 +432,9 @@ uv run pytest tests/unit tests/contract tests/golden -q
 # Or by marker
 uv run pytest -m "not e2e"
 
+# The full in-process run — expect 334 passed, 2 known-red (see note below)
+uv run pytest -q --deselect tests/e2e/test_rate_limiter.py
+
 # Live-process suite: needs all six services plus the Go rate limiter on :8002
 uv run pytest tests/e2e/test_rate_limiter.py
 ```
@@ -443,8 +446,19 @@ Except for `tests/e2e/test_rate_limiter.py`, the whole suite is wired **in-proce
 > [!TIP]
 > If testing rate-limited endpoints, you can reset the rate limiter state using `curl -X POST http://localhost:8002/reset` before running tests to prevent rate limit assertions from failing due to consumed tokens.
 
+> [!WARNING]
+> `tests/e2e/test_rate_limiter.py` writes **real events into the user's Google Calendar**.
+> 290 such "Test Event" entries from past runs already exist; they are invisible in the UI
+> because the default window starts 180 days back. Deselect `TestCalendarEventsEndpoint`
+> to prevent further pollution:
+> `uv run pytest tests/e2e/test_rate_limiter.py --deselect tests/e2e/test_rate_limiter.py::TestCalendarEventsEndpoint`
+
 > [!NOTE]
-> Two tests in `tests/e2e/test_endpoints_integration.py` (`test_create_calendar_event_missing_email_account_id`, `test_update_calendar_event_success`) are **known-red and pre-date the refactor**: they send request bodies that fail the endpoints' Pydantic validation and so get `422`. They are test bugs, not product regressions, and are carried across unchanged.
+> The full in-process run settles at **334 passed, 2 known-red**. The two reds live in
+> `tests/e2e/test_endpoints_integration.py` (`test_create_calendar_event_missing_email_account_id`,
+> `test_update_calendar_event_success`) and **pre-date the refactor**: they send request bodies
+> that fail the endpoints' Pydantic validation and so get `422`. They are test bugs, not product
+> regressions, and are carried across unchanged.
 
 ---
 
@@ -459,6 +473,12 @@ The Database service is the sole **Python** owner of `gmail_agent.db`, but the G
 ### Interactive OAuth runs inside a web request
 
 When a mailbox's token cannot be refreshed, the credential ladder falls through to `InstalledAppFlow.run_local_server(port=8080)` — an **interactive browser flow, started on the server, inside an HTTP request**. It waits for a human to click through Google's consent screen on the machine running Accounts. While it waits it occupies an Accounts worker, so a hung re-auth degrades sign-in for everyone. The flow is wrapped in `run_in_threadpool` so it no longer blocks the event loop, and the Gateway allows a 120 s timeout on Accounts routes, but the fundamental shape is unchanged from before the refactor.
+
+Because the human at the consent screen can take arbitrarily long, the interactive credential fetch in `backend/services/user_data/gmail.py` is issued with `INTERACTIVE_OAUTH_TIMEOUT = 1800.0` instead of inheriting the 30 s client default — at 30 s the inner call gave up mid-consent and severed the flow. The non-interactive calendar path deliberately keeps the 30 s default. An abandoned consent flow leaves the Accounts service still holding the loopback listener on port `8080`; that process needs `SIGKILL` before Accounts can be restarted.
+
+### A calendar read rewrites `email_tokens`
+
+`GET /api/calendar/events` persists possibly-refreshed credentials on every call, so a plain *read* of the calendar writes to the database. The practical consequence: `gmail_agent.db`'s md5 is **not** stable across reads, so any "the database was untouched" claim has to be a row-level content diff, never a checksum comparison. This is pre-existing monolith behaviour and was deliberately preserved.
 
 ### Preserved defects (X1–X10)
 
