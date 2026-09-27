@@ -2,8 +2,13 @@
 
 > **Status Notice:**
 > 1. **MCP Server Note:** The MCP server component is currently undergoing maintenance/refactoring due to recent schema changes (known issue).
-> 2. **Project Status (Work in Progress):** This project is actively being developed. Tasks remaining on the roadmap include field-level encryption, enhanced AI guardrails, and additional email provider integrations.
+> 2. **Project Status (Work in Progress):** This project is a work in progress (currently on hiatus). Tasks remaining on the roadmap include field-level encryption, enhanced AI guardrails, and additional email provider integrations.
 > 3. **Public Availability:** Published to showcase architecture and design patterns.
+
+I have decided to stop working on this project, as I have started this project over a year ago where I had little programming experience and exposure to actual development best practices. After a full codebase rewrite into the microservices architecture (which did not meet my expectations and goals), I have decided to stop working on this project and start over fresh (while keeping the core logic and most pieces, only using a modern and maintainable architecture from the start) with the lessons I have learned:
+- "As long as it works" is not a valid approach, even for small personal projects, if I want to practice building scalable and good software.
+- The most important part of using AI or orchestrated AI agents to write code is the main plan. Spend the majority of the time perfecting the plan and keeping it up to date with my goals and ideas. Otherwise filling patches of missed requirements becomes frustrating and inefficient.
+
 
 ---
 
